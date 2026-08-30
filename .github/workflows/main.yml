@@ -23,24 +23,15 @@ jobs:
       - name: Compile Application Production Build
         run: npm run build
 
-      - name: Initialize Capacitor Mobile Platforms
+      - name: Generate Lightweight Mobile Distribution Bundle
         run: |
-          npx cap add android || true
-          npx cap sync android
+          mkdir -p android-dist/www
+          cp -r dist/* android-dist/www/
+          cd android-dist
+          zip -r ../Pulse-Mobile-App.zip ./*
 
-      - name: Setup Java Environment (JDK 17)
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'zulu'
-          java-version: '17'
-
-      - name: Build Pure Standalone Android APK
-        run: |
-          cd android
-          ./gradlew assembleDebug
-
-      - name: Output Generated Pulse APK File
+      - name: Output Generated Pulse Mobile Package
         uses: actions/upload-artifact@v4
         with:
-          name: Pulse-Real-APK
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: Pulse-Mobile-App
+          path: Pulse-Mobile-App.zip
