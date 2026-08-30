@@ -29,12 +29,14 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Inject Android Native Native Shell Configuration
+      - name: Initialize Fully Integrated Android Framework
         run: |
+          npm install @capacitor/android@latest --save-dev
           npx cap add android || true
-          mkdir -p android/app/src/main/res/xml
-          echo '<?xml version="1.0" encoding="utf-8"?><network-security-config><base-config cleartextTrafficPermitted="true"/></network-security-config>' > android/app/src/main/res/xml/network_security_config.xml
           npx cap sync android
+
+      - name: Grant Gradle Executive Permissions
+        run: chmod +x android/gradlew
 
       - name: Build Pure Standalone Android APK
         run: |
