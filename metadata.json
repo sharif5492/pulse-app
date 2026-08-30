@@ -1,0 +1,6 @@
+{
+  "name": "Pulse",
+  "description": "Mobile-first social media app for reels, stories, live rooms, and DMs with Supabase auth and notifications.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
