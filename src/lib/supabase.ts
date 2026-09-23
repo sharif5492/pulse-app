@@ -1,32 +1,120 @@
 import { createClient, SupabaseClient, User as SupabaseUser } from '@supabase/supabase-js';
 import { User, UserConnection, ConnectionStatus } from '../types';
+import { getPersistentAvatar, savePersistentAvatar, optimizeAvatarImage } from './avatarStorage';
+import { areUserIdsEqual, getCanonicalConnectionPairKey, normalizeUserId } from '../utils/userIdUtils';
 
-const supabaseUrl = (import.meta as any).env?.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
+// Retrieve credentials from localStorage (if set by user in Settings) or environment variables
+export function getStoredSupabaseConfig() {
+  const envUrl = (import.meta as any).env?.VITE_SUPABASE_URL || '';
+  const envKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
+  const localUrl = typeof window !== 'undefined' ? localStorage.getItem('supabase_url') || '' : '';
+  const localKey = typeof window !== 'undefined' ? localStorage.getItem('supabase_anon_key') || '' : '';
 
-// Validate if environment provides a genuine supabase URL
-const isValidSupabaseConfig = 
-  Boolean(supabaseUrl) && 
-  Boolean(supabaseAnonKey) && 
-  !supabaseUrl.includes('xyzcompany') && 
-  supabaseUrl.startsWith('https://');
+  const url = (localUrl || envUrl).trim();
+  const anonKey = (localKey || envKey).trim();
+  const isValid = 
+    Boolean(url) && 
+    Boolean(anonKey) && 
+    !url.includes('xyzcompany') && 
+    url.startsWith('https://');
 
-export const isSupabaseConfigured = isValidSupabaseConfig;
+  return { url, anonKey, isValid };
+}
 
+const initialConfig = getStoredSupabaseConfig();
 export let supabase: SupabaseClient | null = null;
+export let isSupabaseConfigured = initialConfig.isValid;
+export const isValidSupabaseConfig = initialConfig.isValid;
 
-if (isValidSupabaseConfig) {
-  try {
-    supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-      },
-    });
-  } catch (err) {
-    console.warn('Failed to initialize Supabase client:', err);
-    supabase = null;
+export function initSupabaseClient(customUrl?: string, customKey?: string): SupabaseClient | null {
+  const config = getStoredSupabaseConfig();
+  const url = (customUrl !== undefined ? customUrl : config.url).trim();
+  const key = (customKey !== undefined ? customKey : config.anonKey).trim();
+
+  if (url && key && url.startsWith('https://') && !url.includes('xyzcompany')) {
+    try {
+      supabase = createClient(url, key, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+        },
+      });
+      isSupabaseConfigured = true;
+      return supabase;
+    } catch (err) {
+      console.warn('Failed to initialize Supabase client:', err);
+      supabase = null;
+      isSupabaseConfigured = false;
+      return null;
+    }
   }
+
+  supabase = null;
+  isSupabaseConfigured = false;
+  return null;
+}
+
+// Initial bootstrap
+if (initialConfig.isValid) {
+  initSupabaseClient(initialConfig.url, initialConfig.anonKey);
+}
+
+export function saveSupabaseCredentials(url: string, anonKey: string): boolean {
+  if (typeof window !== 'undefined') {
+    if (url.trim() && anonKey.trim()) {
+      localStorage.setItem('supabase_url', url.trim());
+      localStorage.setItem('supabase_anon_key', anonKey.trim());
+    } else {
+      localStorage.removeItem('supabase_url');
+      localStorage.removeItem('supabase_anon_key');
+    }
+  }
+  const client = initSupabaseClient(url, anonKey);
+  return Boolean(client);
+}
+
+export async function testSupabaseTables(): Promise<{
+  connected: boolean;
+  postsTable: boolean;
+  connectionsTable: boolean;
+  friendRequestsTable: boolean;
+  error?: string;
+}> {
+  if (!supabase) {
+    return {
+      connected: false,
+      postsTable: false,
+      connectionsTable: false,
+      friendRequestsTable: false,
+      error: 'Supabase client is not initialized. Please enter valid Project URL and Anon Key.',
+    };
+  }
+
+  let postsOk = false;
+  let connsOk = false;
+  let frOk = false;
+
+  try {
+    const { error: pErr } = await supabase.from('posts').select('id').limit(1);
+    postsOk = !pErr || pErr.code !== '42P01'; // 42P01 is table does not exist
+  } catch {}
+
+  try {
+    const { error: cErr } = await supabase.from('connections').select('id').limit(1);
+    connsOk = !cErr || cErr.code !== '42P01';
+  } catch {}
+
+  try {
+    const { error: fErr } = await supabase.from('friend_requests').select('id').limit(1);
+    frOk = !fErr || fErr.code !== '42P01';
+  } catch {}
+
+  return {
+    connected: true,
+    postsTable: postsOk,
+    connectionsTable: connsOk,
+    friendRequestsTable: frOk,
+  };
 }
 
 export interface AuthResponse {
@@ -122,19 +210,32 @@ export const authService = {
     };
   },
 
-  async signInWithGoogle(): Promise<{ error?: string | null }> {
-    if (supabase) {
+  async signInWithGoogle(): Promise<{ error?: string | null; redirected?: boolean }> {
+    if (supabase && isValidSupabaseConfig) {
       try {
-        const { error } = await supabase.auth.signInWithOAuth({
+        const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+        const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
+        const safeRedirectTo = `${currentOrigin}${currentPath}`;
+
+        const { data, error } = await supabase.auth.signInWithOAuth({
           provider: 'google',
           options: {
-            redirectTo: window.location.origin,
+            redirectTo: safeRedirectTo,
+            skipBrowserRedirect: false,
           },
         });
-        if (error) throw error;
-        return {};
+
+        if (error) {
+          console.warn('Supabase Google OAuth provider notice:', error.message);
+          // Return notice rather than throwing unhandled exception
+          return { error: error.message };
+        }
+
+        // If data.url is returned or browser initiates redirect
+        return { redirected: Boolean(data?.url) };
       } catch (err: any) {
-        return { error: err.message || 'Google OAuth failed' };
+        console.warn('Google OAuth exception caught:', err);
+        return { error: err.message || 'Google OAuth authentication failed' };
       }
     }
 
@@ -148,6 +249,187 @@ export const authService = {
       } catch (e) {
         console.error(e);
       }
+    }
+  },
+};
+
+export const profileService = {
+  getCacheKey(userId: string): string {
+    return `pulse_profile_${userId}`;
+  },
+
+  async getProfile(userId: string): Promise<Partial<User> | null> {
+    const persistentAvatar = getPersistentAvatar(userId);
+    let cachedProfile: Partial<User> | null = null;
+    if (typeof window !== 'undefined') {
+      try {
+        const cachedStr = localStorage.getItem(this.getCacheKey(userId));
+        if (cachedStr) {
+          cachedProfile = JSON.parse(cachedStr);
+        }
+      } catch (e) {
+        // ignore parse error
+      }
+    }
+
+    if (cachedProfile && persistentAvatar) {
+      cachedProfile.avatar = persistentAvatar;
+    }
+
+    if (!supabase || !isValidSupabaseConfig) {
+      if (persistentAvatar && cachedProfile) {
+        cachedProfile.avatar = persistentAvatar;
+      }
+      return cachedProfile;
+    }
+
+    // 1. Try fetching from Supabase 'profiles' table
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (!error && data) {
+        const fetchedAvatar = persistentAvatar || data.avatar_url || data.avatar || cachedProfile?.avatar;
+        const fetched: Partial<User> = {
+          id: data.id,
+          name: data.full_name || data.name || data.display_name || cachedProfile?.name,
+          username: data.username || data.user_name || cachedProfile?.username,
+          avatar: fetchedAvatar,
+          bio: data.bio ?? data.about ?? cachedProfile?.bio,
+          verified: data.verified ?? data.is_verified ?? cachedProfile?.verified,
+          followersCount: data.followers_count ?? data.followersCount ?? cachedProfile?.followersCount,
+          followingCount: data.following_count ?? data.followingCount ?? cachedProfile?.followingCount,
+          likesCount: data.likes_count ?? data.likesCount ?? cachedProfile?.likesCount,
+          isPrivate: data.is_private ?? data.isPrivate ?? cachedProfile?.isPrivate,
+        };
+
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(this.getCacheKey(userId), JSON.stringify(fetched));
+        }
+        return fetched;
+      }
+    } catch (err) {
+      // ignore table query errors
+    }
+
+    // 2. Try reading from auth.getUser() metadata
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (authUser && authUser.id === userId && authUser.user_metadata) {
+        const meta = authUser.user_metadata;
+        const fetchedAvatar = persistentAvatar || meta.avatar_url || meta.avatar || cachedProfile?.avatar;
+        const fetched: Partial<User> = {
+          id: authUser.id,
+          name: meta.full_name || meta.name || authUser.email?.split('@')[0] || cachedProfile?.name,
+          username: meta.username || authUser.email?.split('@')[0]?.toLowerCase() || cachedProfile?.username,
+          avatar: fetchedAvatar,
+          bio: meta.bio ?? cachedProfile?.bio,
+          verified: meta.verified ?? cachedProfile?.verified,
+          followersCount: meta.followers_count ?? cachedProfile?.followersCount,
+          followingCount: meta.following_count ?? cachedProfile?.followingCount,
+          likesCount: meta.likes_count ?? cachedProfile?.likesCount,
+          isPrivate: meta.is_private ?? cachedProfile?.isPrivate,
+        };
+
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(this.getCacheKey(userId), JSON.stringify(fetched));
+        }
+        return fetched;
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    return cachedProfile;
+  },
+
+  async updateProfile(userId: string, updates: Partial<User>): Promise<{ success: boolean; error?: string }> {
+    let finalAvatar = updates.avatar;
+    if (finalAvatar) {
+      // Save avatar to persistent storage immediately
+      try {
+        finalAvatar = await optimizeAvatarImage(finalAvatar);
+        updates.avatar = finalAvatar;
+        await savePersistentAvatar(userId, finalAvatar);
+      } catch (err) {
+        console.warn('Avatar optimization notice:', err);
+      }
+    }
+
+    // 1. Cache immediately in localStorage
+    if (typeof window !== 'undefined') {
+      try {
+        const existing = localStorage.getItem(this.getCacheKey(userId));
+        const prev = existing ? JSON.parse(existing) : {};
+        const merged = { ...prev, ...updates, id: userId };
+        localStorage.setItem(this.getCacheKey(userId), JSON.stringify(merged));
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    if (!supabase || !isValidSupabaseConfig) {
+      return { success: true };
+    }
+
+    try {
+      // 2. Update Supabase Auth user_metadata
+      const authData: Record<string, any> = {};
+      if (updates.name !== undefined) authData.full_name = updates.name;
+      if (updates.username !== undefined) authData.username = updates.username;
+      if (updates.avatar !== undefined) authData.avatar_url = updates.avatar;
+      if (updates.bio !== undefined) authData.bio = updates.bio;
+      if (updates.verified !== undefined) authData.verified = updates.verified;
+      if (updates.followersCount !== undefined) authData.followers_count = updates.followersCount;
+      if (updates.followingCount !== undefined) authData.following_count = updates.followingCount;
+      if (updates.likesCount !== undefined) authData.likes_count = updates.likesCount;
+      if (updates.isPrivate !== undefined) authData.is_private = updates.isPrivate;
+
+      const { error: authError } = await supabase.auth.updateUser({
+        data: authData,
+      });
+      if (authError) {
+        console.warn('Supabase auth.updateUser note:', authError.message);
+      }
+
+      // 3. Upsert to 'profiles' table
+      const profileRow: Record<string, any> = {
+        id: userId,
+        updated_at: new Date().toISOString(),
+      };
+      if (updates.name !== undefined) {
+        profileRow.full_name = updates.name;
+        profileRow.name = updates.name;
+      }
+      if (updates.username !== undefined) profileRow.username = updates.username;
+      if (updates.avatar !== undefined) {
+        profileRow.avatar_url = updates.avatar;
+        profileRow.avatar = updates.avatar;
+      }
+      if (updates.bio !== undefined) profileRow.bio = updates.bio;
+      if (updates.verified !== undefined) profileRow.verified = updates.verified;
+      if (updates.followersCount !== undefined) profileRow.followers_count = updates.followersCount;
+      if (updates.followingCount !== undefined) profileRow.following_count = updates.followingCount;
+      if (updates.likesCount !== undefined) profileRow.likes_count = updates.likesCount;
+      if (updates.isPrivate !== undefined) profileRow.is_private = updates.isPrivate;
+
+      const { error: profileDbErr } = await supabase.from('profiles').upsert([profileRow]);
+      if (profileDbErr) {
+        // Fallback to 'users' table if 'profiles' table name differs
+        try {
+          await supabase.from('users').upsert([profileRow]);
+        } catch (uErr) {
+          // ignore
+        }
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      console.warn('Supabase profile sync note:', err?.message || err);
+      return { success: false, error: err?.message || 'Sync failed' };
     }
   },
 };
@@ -356,11 +638,14 @@ export const postsService = {
     audioArtist?: string;
     type?: 'reel' | 'story' | 'video' | 'post';
   }) {
-    if (!supabase) return null;
+    if (!supabase) {
+      console.warn('[Supabase] Warning: Supabase client is not connected. Reel saved only in local state. Go to Settings to configure Supabase URL & Key.');
+      return null;
+    }
     try {
       const row: any = {
-        user_id: post.userId,
-        caption: post.caption,
+        user_id: post.userId || 'usr_anonymous',
+        caption: post.caption || '',
         video_url: post.videoUrl || post.mediaUrl || null,
         media_url: post.mediaUrl || post.videoUrl || null,
         thumbnail_url: post.thumbnailUrl || null,
@@ -392,15 +677,27 @@ export const postsService = {
         .single();
 
       if (error) {
-        console.warn('Error inserting post to Supabase:', error);
-        // Retry with minimal columns in case of strict table schema
-        const minimalRow = {
-          caption: post.caption,
-          video_url: post.videoUrl || post.mediaUrl,
-          media_url: post.mediaUrl || post.videoUrl,
+        console.warn('[Supabase] Primary posts insert notice:', error.message || error);
+        if (error.code === '42P01') {
+          console.error('[Supabase CRITICAL] Table "posts" does not exist in your Supabase database! Please run supabase-schema.sql in your Supabase SQL Editor.');
+          return null;
+        }
+
+        // Retry with standard minimal columns
+        const minimalRow: any = {
+          user_id: post.userId || 'usr_anonymous',
+          caption: post.caption || '',
+          video_url: post.videoUrl || post.mediaUrl || '',
+          media_url: post.mediaUrl || post.videoUrl || '',
+          author_name: post.userName,
+          author_username: post.userUsername,
           created_at: new Date().toISOString(),
         };
         const res = await supabase.from('posts').insert([minimalRow]).select();
+        if (res.error) {
+          console.warn('[Supabase] Minimal posts insert fallback also failed:', res.error);
+          return null;
+        }
         return res.data?.[0] || null;
       }
       return data;
@@ -736,42 +1033,92 @@ export const connectionsService = {
 
   async fetchConnections(userId: string): Promise<UserConnection[]> {
     const cached = this.getLocalConnections(userId);
+    const candidateConnections: UserConnection[] = [];
+
+    // 1. Fetch from shared backend API (supports multi-device cross-sync)
+    try {
+      const resp = await fetch(`/api/connections?userId=${encodeURIComponent(userId)}`);
+      if (resp.ok) {
+        const json = await resp.json();
+        if (json.success && Array.isArray(json.connections)) {
+          for (const row of json.connections) {
+            candidateConnections.push({
+              id: String(row.id),
+              requesterId: row.requesterId,
+              receiverId: row.receiverId,
+              status: row.status as ConnectionStatus,
+              createdAt: row.createdAt || new Date().toISOString(),
+              updatedAt: row.updatedAt || row.createdAt || new Date().toISOString(),
+              requester: row.requester || undefined,
+              receiver: row.receiver || undefined,
+            });
+          }
+        }
+      }
+    } catch (e) {
+      // Offline fallback
+    }
 
     if (supabase && userId) {
       try {
+        const norm = normalizeUserId(userId);
         const { data, error } = await supabase
           .from('connections')
           .select('*')
-          .or(`requester_id.eq.${userId},receiver_id.eq.${userId}`);
+          .or(`requester_id.eq.${userId},receiver_id.eq.${userId}${norm ? `,requester_id.eq.${norm},receiver_id.eq.${norm}` : ''}`);
 
         if (!error && data && data.length > 0) {
-          const mapped: UserConnection[] = data.map((row: any) => ({
-            id: String(row.id),
-            requesterId: row.requester_id,
-            receiverId: row.receiver_id,
-            status: row.status as ConnectionStatus,
-            createdAt: row.created_at || new Date().toISOString(),
-            updatedAt: row.updated_at || new Date().toISOString(),
-            requester: row.requester_metadata || undefined,
-            receiver: row.receiver_metadata || undefined,
-          }));
-
-          // Merge with cached list
-          const combined = [...mapped];
-          for (const c of cached) {
-            if (!combined.some((item) => item.id === c.id || (item.requesterId === c.requesterId && item.receiverId === c.receiverId))) {
-              combined.push(c);
-            }
+          for (const row of data) {
+            candidateConnections.push({
+              id: String(row.id),
+              requesterId: row.requester_id,
+              receiverId: row.receiver_id,
+              status: row.status as ConnectionStatus,
+              createdAt: row.created_at || new Date().toISOString(),
+              updatedAt: row.updated_at || row.created_at || new Date().toISOString(),
+              requester: row.requester_metadata || undefined,
+              receiver: row.receiver_metadata || undefined,
+            });
           }
-          this.setLocalConnections(userId, combined);
-          return combined;
         }
       } catch (err) {
         console.warn('Supabase fetchConnections warning:', err);
       }
     }
 
-    return cached;
+    // Merge with local cache: Canonical pair key deduplication with newest timestamp winning
+    const dedupeMap = new Map<string, UserConnection>();
+
+    const insertCandidate = (conn: UserConnection) => {
+      if (conn.status === 'cancelled') return;
+      const pairKey = getCanonicalConnectionPairKey(conn.requesterId, conn.receiverId);
+      if (!pairKey) return;
+
+      const existing = dedupeMap.get(pairKey);
+      if (!existing) {
+        dedupeMap.set(pairKey, conn);
+      } else {
+        // Keep the one with the newest updatedAt timestamp
+        const existingTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
+        const incomingTime = new Date(conn.updatedAt || conn.createdAt || 0).getTime();
+        if (incomingTime >= existingTime) {
+          dedupeMap.set(pairKey, conn);
+        }
+      }
+    };
+
+    // 1. Add cached first
+    for (const c of cached) {
+      insertCandidate(c);
+    }
+    // 2. Add server/Supabase candidates (they will update older cached ones)
+    for (const c of candidateConnections) {
+      insertCandidate(c);
+    }
+
+    const combined = Array.from(dedupeMap.values());
+    this.setLocalConnections(userId, combined);
+    return combined;
   },
 
   async sendConnectionRequest(
@@ -780,42 +1127,58 @@ export const connectionsService = {
     requesterUser?: User, 
     receiverUser?: User
   ): Promise<UserConnection> {
+    const pairKey = getCanonicalConnectionPairKey(requesterId, receiverId);
+    const connId = `conn_${normalizeUserId(requesterId)}_${normalizeUserId(receiverId)}`;
+    const now = new Date().toISOString();
+
     const newConn: UserConnection = {
-      id: `conn_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      id: connId,
       requesterId,
       receiverId,
       status: 'pending',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: now,
+      updatedAt: now,
       requester: requesterUser,
       receiver: receiverUser,
     };
 
-    // Update requester's local cache
+    // Update requester's local cache immediately
     const currentRequesterList = this.getLocalConnections(requesterId);
     const filtered = currentRequesterList.filter(
-      (c) => !(c.requesterId === requesterId && c.receiverId === receiverId) && !(c.requesterId === receiverId && c.receiverId === requesterId)
+      (c) => getCanonicalConnectionPairKey(c.requesterId, c.receiverId) !== pairKey
     );
     this.setLocalConnections(requesterId, [newConn, ...filtered]);
 
-    // Update receiver's local cache if accessible
-    const currentReceiverList = this.getLocalConnections(receiverId);
-    this.setLocalConnections(receiverId, [newConn, ...currentReceiverList.filter((c) => c.id !== newConn.id)]);
+    // Send to shared backend API for instant cross-device delivery
+    try {
+      await fetch('/api/connections/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requesterId,
+          receiverId,
+          requester: requesterUser,
+          receiver: receiverUser,
+        }),
+      });
+    } catch (e) {
+      console.warn('Backend connection request error:', e);
+    }
 
     if (supabase) {
       try {
-        await supabase.from('connections').upsert([
-          {
-            id: newConn.id,
-            requester_id: requesterId,
-            receiver_id: receiverId,
-            status: 'pending',
-            requester_metadata: requesterUser || null,
-            receiver_metadata: receiverUser || null,
-            created_at: newConn.createdAt,
-            updated_at: newConn.updatedAt,
-          },
-        ]);
+        const connRecord = {
+          id: newConn.id,
+          requester_id: requesterId,
+          sender_id: requesterId,
+          receiver_id: receiverId,
+          status: 'pending',
+          requester_metadata: requesterUser || null,
+          receiver_metadata: receiverUser || null,
+          created_at: newConn.createdAt,
+          updated_at: newConn.updatedAt,
+        };
+        await supabase.from('connections').upsert([connRecord]);
       } catch (err) {
         console.warn('Supabase sendConnectionRequest warning:', err);
       }
@@ -825,11 +1188,14 @@ export const connectionsService = {
   },
 
   async acceptConnectionRequest(connectionId: string, requesterId: string, receiverId: string): Promise<boolean> {
+    const pairKey = getCanonicalConnectionPairKey(requesterId, receiverId);
+    const now = new Date().toISOString();
+
     const updateCache = (uId: string) => {
       const list = this.getLocalConnections(uId);
       const updated = list.map((c) => {
-        if (c.id === connectionId || (c.requesterId === requesterId && c.receiverId === receiverId) || (c.requesterId === receiverId && c.receiverId === requesterId)) {
-          return { ...c, status: 'accepted' as ConnectionStatus, updatedAt: new Date().toISOString() };
+        if (c.id === connectionId || getCanonicalConnectionPairKey(c.requesterId, c.receiverId) === pairKey) {
+          return { ...c, status: 'accepted' as ConnectionStatus, updatedAt: now };
         }
         return c;
       });
@@ -839,11 +1205,20 @@ export const connectionsService = {
     updateCache(requesterId);
     updateCache(receiverId);
 
+    // Sync to shared backend API
+    try {
+      await fetch('/api/connections/respond', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connectionId, requesterId, receiverId, status: 'accepted' }),
+      });
+    } catch {}
+
     if (supabase) {
       try {
         await supabase
           .from('connections')
-          .update({ status: 'accepted', updated_at: new Date().toISOString() })
+          .update({ status: 'accepted', updated_at: now })
           .or(`id.eq.${connectionId},and(requester_id.eq.${requesterId},receiver_id.eq.${receiverId})`);
       } catch (err) {
         console.warn('Supabase acceptConnectionRequest warning:', err);
@@ -853,11 +1228,14 @@ export const connectionsService = {
   },
 
   async declineConnectionRequest(connectionId: string, requesterId: string, receiverId: string): Promise<boolean> {
+    const pairKey = getCanonicalConnectionPairKey(requesterId, receiverId);
+    const now = new Date().toISOString();
+
     const updateCache = (uId: string) => {
       const list = this.getLocalConnections(uId);
       const updated = list.map((c) => {
-        if (c.id === connectionId || (c.requesterId === requesterId && c.receiverId === receiverId) || (c.requesterId === receiverId && c.receiverId === requesterId)) {
-          return { ...c, status: 'declined' as ConnectionStatus, updatedAt: new Date().toISOString() };
+        if (c.id === connectionId || getCanonicalConnectionPairKey(c.requesterId, c.receiverId) === pairKey) {
+          return { ...c, status: 'declined' as ConnectionStatus, updatedAt: now };
         }
         return c;
       });
@@ -867,11 +1245,20 @@ export const connectionsService = {
     updateCache(requesterId);
     updateCache(receiverId);
 
+    // Sync to shared backend API
+    try {
+      await fetch('/api/connections/respond', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connectionId, requesterId, receiverId, status: 'declined' }),
+      });
+    } catch {}
+
     if (supabase) {
       try {
         await supabase
           .from('connections')
-          .update({ status: 'declined', updated_at: new Date().toISOString() })
+          .update({ status: 'declined', updated_at: now })
           .or(`id.eq.${connectionId},and(requester_id.eq.${requesterId},receiver_id.eq.${receiverId})`);
       } catch (err) {
         console.warn('Supabase declineConnectionRequest warning:', err);
@@ -881,10 +1268,12 @@ export const connectionsService = {
   },
 
   async cancelConnectionRequest(requesterId: string, receiverId: string): Promise<boolean> {
+    const pairKey = getCanonicalConnectionPairKey(requesterId, receiverId);
+
     const updateCache = (uId: string) => {
       const list = this.getLocalConnections(uId);
       const updated = list.filter(
-        (c) => !(c.requesterId === requesterId && c.receiverId === receiverId)
+        (c) => getCanonicalConnectionPairKey(c.requesterId, c.receiverId) !== pairKey
       );
       this.setLocalConnections(uId, updated);
     };
@@ -892,12 +1281,20 @@ export const connectionsService = {
     updateCache(requesterId);
     updateCache(receiverId);
 
+    try {
+      await fetch('/api/connections/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requesterId, receiverId }),
+      });
+    } catch {}
+
     if (supabase) {
       try {
         await supabase
           .from('connections')
           .delete()
-          .match({ requester_id: requesterId, receiver_id: receiverId });
+          .or(`and(requester_id.eq.${requesterId},receiver_id.eq.${receiverId}),and(requester_id.eq.${receiverId},receiver_id.eq.${requesterId})`);
       } catch (err) {
         console.warn('Supabase cancelConnectionRequest warning:', err);
       }
@@ -1056,7 +1453,7 @@ class RealtimePresenceService {
   private channel: any = null;
   private broadcastChannel: BroadcastChannel | null = null;
   private currentUser: UserPresenceState | null = null;
-  private onlineUserIds: Set<string> = new Set(['usr_1', 'usr_2', 'usr_4', 'usr_5']); // Default active mock creators
+  private onlineUserIds: Set<string> = new Set(); // Real users only
   private presenceMap: Map<string, UserPresenceState> = new Map();
   private listeners: Set<PresenceChangeCallback> = new Set();
   private isInitialized = false;
@@ -1158,7 +1555,7 @@ class RealtimePresenceService {
         this.channel
           .on('presence', { event: 'sync' }, () => {
             const state = this.channel.presenceState();
-            const activeIds = new Set<string>(['usr_1', 'usr_2', 'usr_4', 'usr_5']); // Keep active mock creators
+            const activeIds = new Set<string>();
             activeIds.add(user.id);
 
             Object.keys(state).forEach((key) => {
@@ -1325,3 +1722,170 @@ class RealtimePresenceService {
 }
 
 export const presenceService = new RealtimePresenceService();
+
+/**
+ * Users Discovery & Search Service
+ * Searches profiles across Supabase, Local Storage directory, and predefined active users
+ */
+export const usersDiscoveryService = {
+  getStoredUsers(): User[] {
+    try {
+      const data = localStorage.getItem('pulse_registered_users');
+      const users: User[] = data ? JSON.parse(data) : [];
+      const DUMMY_IDS = new Set(['usr_1', 'usr_2', 'usr_3', 'usr_4', 'usr_5', 'usr_6']);
+      return users.filter((u) => u && u.id && !DUMMY_IDS.has(u.id));
+    } catch {
+      return [];
+    }
+  },
+
+  registerUserLocally(user: User) {
+    if (!user || !user.id) return;
+    const DUMMY_IDS = new Set(['usr_1', 'usr_2', 'usr_3', 'usr_4', 'usr_5', 'usr_6']);
+    if (DUMMY_IDS.has(user.id)) return;
+    try {
+      const existing = this.getStoredUsers();
+      const filtered = existing.filter((u) => u.id !== user.id && u.username !== user.username && !DUMMY_IDS.has(u.id));
+      const updated = [user, ...filtered];
+      localStorage.setItem('pulse_registered_users', JSON.stringify(updated.slice(0, 100)));
+    } catch (e) {
+      console.warn('Failed to register user locally:', e);
+    }
+  },
+
+  async getAllUsers(currentUserId?: string): Promise<User[]> {
+    let serverUsers: User[] = [];
+    try {
+      const resp = await fetch(`/api/users${currentUserId ? `?exclude=${encodeURIComponent(currentUserId)}` : ''}`);
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.success && Array.isArray(data.users)) {
+          serverUsers = data.users;
+        }
+      }
+    } catch {}
+
+    const localUsers = this.getStoredUsers();
+    let dbUsers: User[] = [];
+
+    if (supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .limit(50);
+
+        if (!error && data && Array.isArray(data)) {
+          dbUsers = data.map((d: any) => ({
+            id: d.id,
+            name: d.full_name || d.name || 'Pulse Member',
+            username: d.username || d.user_name || 'pulsar',
+            avatar: d.avatar_url || d.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
+            bio: d.bio || '',
+            verified: Boolean(d.verified),
+            followersCount: d.followers_count || 120,
+            followingCount: d.following_count || 45,
+            likesCount: d.likes_count || 320,
+            isPrivate: Boolean(d.is_private),
+          }));
+        }
+      } catch (err) {
+        console.warn('Supabase getAllUsers note:', err);
+      }
+    }
+
+    // Merge distinct users from all sources
+    const DUMMY_IDS = new Set(['usr_1', 'usr_2', 'usr_3', 'usr_4', 'usr_5', 'usr_6']);
+    const map = new Map<string, User>();
+    for (const u of serverUsers) if (u.id && !DUMMY_IDS.has(u.id)) map.set(u.id, u);
+    for (const u of dbUsers) if (u.id && !map.has(u.id) && !DUMMY_IDS.has(u.id)) map.set(u.id, u);
+    for (const u of localUsers) if (u.id && !map.has(u.id) && !DUMMY_IDS.has(u.id)) map.set(u.id, u);
+
+    return Array.from(map.values()).filter((u) => u.id !== currentUserId);
+  },
+
+  async searchUsers(
+    query: string, 
+    currentUserId?: string, 
+    fallbackMockUsers: User[] = []
+  ): Promise<{ users: User[]; isSelfQuery: boolean }> {
+    const cleanQuery = query.trim().toLowerCase().replace(/^[@#]/, '');
+    let serverResults: User[] = [];
+    let serverSelfQuery = false;
+
+    // 1. Query shared server registry across all devices
+    try {
+      const resp = await fetch(
+        `/api/users/search?q=${encodeURIComponent(query)}&currentUserId=${encodeURIComponent(currentUserId || '')}`
+      );
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.success && Array.isArray(data.users)) {
+          serverResults = data.users;
+          serverSelfQuery = Boolean(data.isSelfQuery);
+        }
+      }
+    } catch {}
+
+    const allUsers = await this.getAllUsers(currentUserId);
+
+    // Combine distinct users (strictly exclude any dummy IDs)
+    const DUMMY_IDS = new Set(['usr_1', 'usr_2', 'usr_3', 'usr_4', 'usr_5', 'usr_6']);
+    const combinedMap = new Map<string, User>();
+    for (const u of serverResults) {
+      if (u.id && !DUMMY_IDS.has(u.id)) combinedMap.set(u.id, u);
+    }
+    for (const u of allUsers) {
+      if (u.id && !combinedMap.has(u.id) && !DUMMY_IDS.has(u.id)) combinedMap.set(u.id, u);
+    }
+
+    const allList = Array.from(combinedMap.values());
+
+    // Check if query is targeting current user's own identity
+    let isSelfQuery = serverSelfQuery;
+    if (currentUserId && cleanQuery) {
+      if (
+        currentUserId.toLowerCase() === cleanQuery || 
+        currentUserId.toLowerCase().replace('usr_', '') === cleanQuery
+      ) {
+        isSelfQuery = true;
+      }
+    }
+
+    if (!cleanQuery) {
+      return { 
+        users: allList.filter((u) => u.id !== currentUserId), 
+        isSelfQuery: false 
+      };
+    }
+
+    const filtered = allList.filter((u) => {
+      // If it's explicitly searching for self, keep self in result list
+      if (!isSelfQuery && currentUserId && u.id === currentUserId) {
+        return false;
+      }
+      const matchId = u.id.toLowerCase().includes(cleanQuery) || u.id.toLowerCase().replace('usr_', '').includes(cleanQuery);
+      const matchUsername = u.username.toLowerCase().includes(cleanQuery);
+      const matchName = u.name.toLowerCase().includes(cleanQuery);
+      const matchBio = u.bio ? u.bio.toLowerCase().includes(cleanQuery) : false;
+      return matchId || matchUsername || matchName || matchBio;
+    });
+
+    return { users: filtered, isSelfQuery };
+  },
+
+  async lookupUser(idOrUsername: string): Promise<User | null> {
+    if (!idOrUsername) return null;
+    const clean = idOrUsername.trim().toLowerCase().replace(/^[@#]/, '');
+    try {
+      const resp = await fetch(`/api/users/lookup/${encodeURIComponent(clean)}`);
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.success && data.user) {
+          return data.user;
+        }
+      }
+    } catch {}
+    return null;
+  },
+};

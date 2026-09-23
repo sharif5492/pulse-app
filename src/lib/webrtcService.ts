@@ -83,16 +83,69 @@ export class WebRTCService {
     } catch (e) {
       console.warn('Supabase call signals subscription error:', e);
     }
+
+    // Connect to shared backend SSE stream for cross-device signaling
+    if (typeof window !== 'undefined' && 'EventSource' in window && userId) {
+      try {
+        const es = new EventSource(`/api/realtime/stream?userId=${encodeURIComponent(userId)}`);
+        es.addEventListener('call_signal', (e: MessageEvent) => {
+          try {
+            const record = JSON.parse(e.data);
+            if (record && record.signal) {
+              this.callbacks.onSignalMessage?.(record.signal);
+            }
+          } catch {}
+        });
+      } catch (err) {
+        console.warn('SSE signaling stream warning:', err);
+      }
+    }
+
+    // Fallback polling for signals
+    if (typeof window !== 'undefined' && userId) {
+      let lastTimestamp = Date.now() - 5000;
+      setInterval(async () => {
+        try {
+          const resp = await fetch(`/api/signals?userId=${encodeURIComponent(userId)}&since=${lastTimestamp}`);
+          if (resp.ok) {
+            const json = await resp.json();
+            if (json.success && Array.isArray(json.signals)) {
+              for (const sig of json.signals) {
+                if (sig.timestamp > lastTimestamp) {
+                  lastTimestamp = sig.timestamp;
+                  this.callbacks.onSignalMessage?.(sig.signal);
+                }
+              }
+            }
+          }
+        } catch {}
+      }, 2000);
+    }
   }
 
-  // Send a signal via Supabase Realtime and local BroadcastChannel
+  // Send a signal via Supabase Realtime, shared backend, and local BroadcastChannel
   async sendSignal(payload: CallSignalPayload) {
     // 1. Broadcast locally across browser tabs
     try {
       this.broadcastChannel?.postMessage(payload);
     } catch {}
 
-    // 2. Broadcast through Supabase Realtime channel
+    // 2. Broadcast through shared server backend for separate mobile devices
+    if (payload.receiverId && payload.receiverId !== 'all') {
+      try {
+        fetch('/api/signals/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            from: payload.caller?.id || 'sender',
+            to: payload.receiverId,
+            signal: payload,
+          }),
+        }).catch(() => {});
+      } catch {}
+    }
+
+    // 3. Broadcast through Supabase Realtime channel
     if (this.supabaseChannel) {
       try {
         await this.supabaseChannel.send({
