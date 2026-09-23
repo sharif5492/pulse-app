@@ -1,4 +1,4 @@
-export type ConnectionStatus = 'none' | 'pending' | 'accepted' | 'declined';
+export type ConnectionStatus = 'none' | 'pending' | 'accepted' | 'declined' | 'cancelled';
 
 export interface UserConnection {
   id: string;
@@ -34,6 +34,12 @@ export interface StoryItem {
   duration: number; // in seconds
   caption?: string;
   timestamp: string;
+  audioTrack?: {
+    title: string;
+    artist: string;
+    url?: string;
+    duration?: number;
+  };
 }
 
 export interface Story {
@@ -161,7 +167,7 @@ export interface UserBlock {
 
 export type SavedPostReference = BookmarkItem;
 
-export type TabType = 'home' | 'reels' | 'live' | 'dms' | 'notifications' | 'profile' | 'camera' | 'settings' | 'auth' | 'ai_chat';
+export type TabType = 'home' | 'reels' | 'live' | 'dms' | 'messages' | 'notifications' | 'profile' | 'camera' | 'settings' | 'auth' | 'ai_chat';
 export type AuthMode = 'login' | 'signup' | 'forgot';
 
 export interface CameraFilter {
@@ -207,5 +213,33 @@ export interface CallSignalPayload {
   reason?: string;
   isMuted?: boolean;
   isVideoOff?: boolean;
+}
+
+export type PaymentMethodType = 'jazzcash' | 'easypaisa' | 'paypal' | 'skrill';
+
+export interface WalletTransaction {
+  id: string;
+  type: 'purchase' | 'withdrawal';
+  coins: number;
+  fiatAmount: number;
+  currency: 'PKR' | 'USD';
+  method: PaymentMethodType;
+  accountDetails: string;
+  accountTitle?: string;
+  status: 'completed' | 'processing' | 'failed';
+  timestamp: string;
+  referenceId: string;
+  notes?: string;
+}
+
+export interface WalletPackage {
+  id: string;
+  name: string;
+  coins: number;
+  bonusCoins?: number;
+  pricePkr: number;
+  priceUsd: number;
+  popular?: boolean;
+  badge?: string;
 }
 

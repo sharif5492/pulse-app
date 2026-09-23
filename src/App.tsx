@@ -21,6 +21,11 @@ import { CreatePostModal } from './components/CreatePostModal';
 import { NotificationToast } from './components/NotificationToast';
 import { CallOverlay } from './components/CallOverlay';
 import { IncomingCallDialog } from './components/IncomingCallDialog';
+import { PWAInstallBanner } from './components/PWAInstallBanner';
+import { UserSearchModal } from './components/UserSearchModal';
+import { CoinsRewardModal } from './components/CoinsRewardModal';
+import { CoinRewardBanner } from './components/CoinRewardBanner';
+import { PaymentWalletModal } from './components/PaymentWalletModal';
 
 const MainAppContent: React.FC = () => {
   const { 
@@ -37,16 +42,22 @@ const MainAppContent: React.FC = () => {
     flipCallCamera,
     toggleSpeaker,
     setCallVoiceEffect,
+    isUserSearchOpen,
+    closeUserSearchModal,
+    isCoinsRewardModalOpen,
+    closeCoinsRewardModal,
+    isPaymentWalletOpen,
+    closePaymentWallet,
+    walletInitialTab,
+    activeConversation,
   } = useApp();
   const { isAuthenticated, user } = useAuth();
   const [showSplash, setShowSplash] = useState(true);
 
+  const isChatRoomOpen = Boolean(activeConversation) && (activeTab === 'dms' || activeTab === 'messages');
+
   const handleSplashComplete = () => {
     setShowSplash(false);
-    // After 5s splash screen, route smoothly to Auth if unauthenticated or keep active
-    if (!isAuthenticated) {
-      setActiveTab('auth');
-    }
   };
 
   const renderActiveView = () => {
@@ -58,6 +69,7 @@ const MainAppContent: React.FC = () => {
       case 'live':
         return <LiveRoomsView />;
       case 'dms':
+      case 'messages':
         return <DirectMessagesView />;
       case 'notifications':
         return <NotificationsView />;
@@ -77,7 +89,7 @@ const MainAppContent: React.FC = () => {
   };
 
   return (
-    <div className={`min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-start relative overflow-x-hidden selection:bg-fuchsia-500 selection:text-white ${isMobilePreviewFrame ? 'p-2 sm:p-6 bg-slate-950' : ''}`}>
+    <div className={`min-h-screen h-[100dvh] w-full bg-slate-950 text-slate-100 flex flex-col items-center justify-start relative selection:bg-fuchsia-500 selection:text-white ${isMobilePreviewFrame ? 'p-2 sm:p-6 bg-slate-950' : ''}`}>
       {/* 5-Second Glowing Pulse Heart Splash Screen */}
       {showSplash && <SplashScreen onComplete={handleSplashComplete} />}
 
@@ -90,7 +102,7 @@ const MainAppContent: React.FC = () => {
         className={`w-full ${
           isMobilePreviewFrame 
             ? 'max-w-[430px] h-[92vh] max-h-[890px] rounded-[44px] border-[5px] border-slate-800 shadow-2xl shadow-fuchsia-950/20 overflow-hidden relative flex flex-col bg-slate-950 ring-1 ring-white/10' 
-            : 'max-w-2xl min-h-screen relative flex flex-col bg-slate-950 shadow-2xl border-x border-slate-900/60'
+            : 'max-w-2xl h-full min-h-screen sm:h-[100dvh] relative flex flex-col bg-slate-950 shadow-2xl border-x border-slate-900/60 overflow-hidden'
         }`}
       >
         {/* Dynamic Island Pill for Mockup Frame */}
@@ -104,16 +116,16 @@ const MainAppContent: React.FC = () => {
         {/* Global Toast Notification */}
         <NotificationToast />
 
-        {/* Top Header */}
-        <Header />
+        {/* Top Header (hidden during active 1-on-1 chat room for immersive full-screen messaging) */}
+        {!isChatRoomOpen && <Header />}
 
         {/* Main Body View */}
-        <main className="flex-1 overflow-y-auto no-scrollbar relative">
+        <main className={`flex-1 ${isChatRoomOpen ? 'h-full overflow-hidden flex flex-col' : 'overflow-y-auto overscroll-contain'} relative no-scrollbar`}>
           {renderActiveView()}
         </main>
 
-        {/* Bottom Navigation Dock (hidden in camera view for immersive full-screen experience) */}
-        {activeTab !== 'camera' && <BottomNav />}
+        {/* Bottom Navigation Dock (hidden during chat room and camera view for immersive full-screen experience) */}
+        {!isChatRoomOpen && activeTab !== 'camera' && <BottomNav />}
 
         {/* Full-screen Overlays */}
         <StoryViewer />
@@ -141,6 +153,31 @@ const MainAppContent: React.FC = () => {
             onReject={rejectCall}
           />
         )}
+
+        {/* Dynamic PWA Add to Home Screen Banner */}
+        <PWAInstallBanner />
+
+        {/* Global User Search & Friend Requests Modal */}
+        <UserSearchModal 
+          isOpen={isUserSearchOpen} 
+          onClose={closeUserSearchModal} 
+        />
+
+        {/* Floating Top Coin Reward Banner */}
+        <CoinRewardBanner />
+
+        {/* Global Fake Coins & Rewards Wallet Hub Modal */}
+        <CoinsRewardModal 
+          isOpen={isCoinsRewardModalOpen} 
+          onClose={closeCoinsRewardModal} 
+        />
+
+        {/* Global Payment & Payouts Wallet Modal (JazzCash, Easypaisa, PayPal, Skrill) */}
+        <PaymentWalletModal
+          isOpen={isPaymentWalletOpen}
+          onClose={closePaymentWallet}
+          initialTab={walletInitialTab}
+        />
       </div>
     </div>
   );

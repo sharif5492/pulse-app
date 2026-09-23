@@ -86,105 +86,55 @@ export const MOCK_USERS: User[] = [
 
 export const MOCK_STORIES: Story[] = [
   {
-    id: 'story_me',
-    user: CURRENT_USER,
-    hasUnread: false,
+    id: 'story_usr_1',
+    user: MOCK_USERS[1],
+    hasUnread: true,
     items: [
       {
-        id: 'st_item_me_1',
+        id: 'st_elena_1',
         type: 'image',
         url: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800&auto=format&fit=crop&q=80',
+        duration: 6,
+        caption: 'Backstage vibes before Shibuya lighting set ✨',
+        timestamp: '15m ago',
+        audioTrack: {
+          title: 'Neon Nights (Tech House)',
+          artist: 'Elena Vance',
+          url: 'https://assets.mixkit.co/music/preview/mixkit-tech-house-vibes-130.mp3',
+        },
+      },
+      {
+        id: 'st_elena_2',
+        type: 'image',
+        url: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=800&auto=format&fit=crop&q=80',
         duration: 5,
-        caption: 'Sound check before the midnight livestream 🎛️',
-        timestamp: '1h ago',
+        caption: 'Custom LED gear synced with the beat 🎧',
+        timestamp: '10m ago',
+        audioTrack: {
+          title: 'Midnight Echoes',
+          artist: 'Marcus Chen ft. Elena',
+          url: 'https://assets.mixkit.co/music/preview/mixkit-chill-bro-494.mp3',
+        },
       },
     ],
   },
   {
-    id: 'story_1',
-    user: MOCK_USERS[1], // Elena
+    id: 'story_usr_2',
+    user: MOCK_USERS[2],
     hasUnread: true,
-    isLiveNow: false,
     items: [
       {
-        id: 'st_item_1_1',
-        type: 'image',
-        url: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=800&auto=format&fit=crop&q=80',
-        duration: 5,
-        caption: 'Tokyo runway backstage fittings 🪡✨',
-        timestamp: '2h ago',
-      },
-      {
-        id: 'st_item_1_2',
-        type: 'image',
-        url: 'https://images.unsplash.com/photo-1509631179647-0177331693ae?w=800&auto=format&fit=crop&q=80',
-        duration: 5,
-        caption: 'Neon palette moodboard for Spring 2026',
-        timestamp: '45m ago',
-      },
-    ],
-  },
-  {
-    id: 'story_2',
-    user: MOCK_USERS[2], // Marcus
-    hasUnread: true,
-    isLiveNow: true,
-    items: [
-      {
-        id: 'st_item_2_1',
+        id: 'st_marcus_1',
         type: 'image',
         url: 'https://images.unsplash.com/photo-1598488035139-bdbb2231ce04?w=800&auto=format&fit=crop&q=80',
-        duration: 5,
-        caption: 'LIVE NOW on Pulse! Jamming on the analog synths 🎚️',
-        timestamp: '10m ago',
-      },
-    ],
-  },
-  {
-    id: 'story_3',
-    user: MOCK_USERS[3], // Sophia
-    hasUnread: true,
-    isLiveNow: false,
-    items: [
-      {
-        id: 'st_item_3_1',
-        type: 'image',
-        url: 'https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?w=800&auto=format&fit=crop&q=80',
-        duration: 5,
-        caption: 'Golden hour in Kyoto captured on 35mm 🎞️',
-        timestamp: '4h ago',
-      },
-    ],
-  },
-  {
-    id: 'story_4',
-    user: MOCK_USERS[4], // Kai
-    hasUnread: false,
-    isLiveNow: false,
-    items: [
-      {
-        id: 'st_item_4_1',
-        type: 'image',
-        url: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=800&auto=format&fit=crop&q=80',
-        duration: 5,
-        caption: 'Interactive particle physics running in WebGPU 🚀',
-        timestamp: '6h ago',
-      },
-    ],
-  },
-  {
-    id: 'story_5',
-    user: MOCK_USERS[5], // Maya
-    hasUnread: true,
-    isLiveNow: false,
-    items: [
-      {
-        id: 'st_item_5_1',
-        type: 'image',
-        url: 'https://images.unsplash.com/photo-1547153760-18fc86324498?w=800&auto=format&fit=crop&q=80',
-        duration: 5,
-        caption: 'New choreography dropping at 8 PM! 🔥',
-        timestamp: '3h ago',
+        duration: 6,
+        caption: 'Tweaking analog filters on the Prophet-6 🎹',
+        timestamp: '1h ago',
+        audioTrack: {
+          title: 'Analog Warmth & Oscillators',
+          artist: 'Marcus Chen',
+          url: 'https://assets.mixkit.co/music/preview/mixkit-valley-sunset-127.mp3',
+        },
       },
     ],
   },

@@ -1,6 +1,6 @@
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
-import App from './App.tsx';
+import App from './App';
 import './index.css';
 
 // Global resilience handler to catch unhandled promise rejections or third-party SDK errors
@@ -20,11 +20,19 @@ if (typeof window !== 'undefined') {
       console.warn('[Global Resilience] Intercepted runtime error:', event.error);
     }
   });
+
+  // Capture PWA install prompt globally
+  window.addEventListener('beforeinstallprompt', (e) => {
+    (window as any).deferredPWAEvent = e;
+  });
 }
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-);
+const rootElement = document.getElementById('root');
+if (rootElement) {
+  createRoot(rootElement).render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  );
+}
 
