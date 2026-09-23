@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { X, Camera, Check, Sparkles, User, AtSign, AlignLeft } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { X, Camera, Check, Sparkles, User, AtSign, AlignLeft, Image as ImageIcon, Upload } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { audioUtils } from '../lib/audioUtils';
+import { optimizeAvatarImage, savePersistentAvatar } from '../lib/avatarStorage';
 
 interface EditProfileModalProps {
   isOpen: boolean;
@@ -19,14 +20,47 @@ const AVATAR_PRESETS = [
 
 export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onClose }) => {
   const { user, updateUserProfile } = useAuth();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [name, setName] = useState(user?.name || '');
   const [username, setUsername] = useState(user?.username || '');
   const [bio, setBio] = useState(user?.bio || '');
   const [avatar, setAvatar] = useState(user?.avatar || AVATAR_PRESETS[0]);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [uploadNotice, setUploadNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (user && isOpen) {
+      setName(user.name || '');
+      setUsername(user.username || '');
+      setBio(user.bio || '');
+      setAvatar(user.avatar || AVATAR_PRESETS[0]);
+    }
+  }, [user, isOpen]);
 
   if (!isOpen || !user) return null;
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      audioUtils.playCameraShutter();
+      try {
+        const optimized = await optimizeAvatarImage(file);
+        if (optimized) {
+          setAvatar(optimized);
+          setUploadNotice('Photo uploaded & ready to save!');
+          setTimeout(() => setUploadNotice(null), 3000);
+        }
+      } catch (err) {
+        console.warn('Avatar optimization error:', err);
+      }
+    }
+  };
+
+  const handleCameraClick = () => {
+    audioUtils.playPop();
+    fileInputRef.current?.click();
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,12 +75,23 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
     setTimeout(() => {
       setSavedSuccess(false);
       onClose();
-    }, 1000);
+    }, 800);
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in">
       <div className="relative w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-2xl space-y-4">
+        {/* Native file input for photo gallery or camera selection */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleFileChange}
+          className="hidden"
+          id="profile-picture-upload-input"
+          aria-label="Upload profile photo"
+        />
+
         {/* Header */}
         <div className="flex items-center justify-between pb-2 border-b border-slate-800">
           <h3 className="text-sm font-bold text-white">Edit Profile</h3>
@@ -65,20 +110,46 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
           </div>
         )}
 
+        {uploadNotice && (
+          <div className="p-2.5 rounded-xl bg-fuchsia-500/20 border border-fuchsia-500/50 text-fuchsia-300 text-xs flex items-center gap-2">
+            <Sparkles className="w-4 h-4" />
+            <span>{uploadNotice}</span>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-4 text-xs">
-          {/* Avatar Picker */}
+          {/* Avatar Picker with Camera Trigger */}
           <div className="flex flex-col items-center space-y-2">
-            <div className="relative">
+            <div className="relative group">
               <img
                 src={avatar}
                 alt="Avatar preview"
                 className="w-20 h-20 rounded-full object-cover border-2 border-fuchsia-500 shadow-lg"
               />
-              <span className="absolute bottom-0 right-0 p-1.5 bg-fuchsia-600 rounded-full text-white shadow-md">
-                <Camera className="w-3 h-3" />
-              </span>
+              <button
+                type="button"
+                id="camera-avatar-upload-btn"
+                onClick={handleCameraClick}
+                className="absolute bottom-0 right-0 p-2 bg-gradient-to-tr from-fuchsia-600 to-indigo-600 hover:from-fuchsia-500 hover:to-indigo-500 rounded-full text-white shadow-lg border-2 border-slate-900 cursor-pointer transition-transform hover:scale-110 active:scale-95 flex items-center justify-center"
+                title="Tap to take photo or choose from gallery"
+                aria-label="Upload profile photo"
+              >
+                <Camera className="w-3.5 h-3.5" />
+              </button>
             </div>
 
+            {/* Quick Upload Button */}
+            <button
+              type="button"
+              id="upload-custom-photo-btn"
+              onClick={handleCameraClick}
+              className="text-[11px] font-semibold text-fuchsia-400 hover:text-fuchsia-300 flex items-center gap-1.5 px-3 py-1 rounded-full bg-fuchsia-500/10 hover:bg-fuchsia-500/20 border border-fuchsia-500/30 transition-all cursor-pointer"
+            >
+              <Upload className="w-3 h-3" />
+              <span>Take Photo / Choose Gallery</span>
+            </button>
+
+            {/* Preset Avatars */}
             <div className="flex items-center gap-2 pt-1">
               {AVATAR_PRESETS.map((p, idx) => (
                 <button

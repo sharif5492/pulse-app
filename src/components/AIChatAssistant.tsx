@@ -480,11 +480,11 @@ export const AIChatAssistant: React.FC<{ onBack?: () => void }> = ({ onBack }) =
 
       {/* Message Thread */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar">
-        {messages.map((msg) => {
+        {messages.map((msg, idx) => {
           const isUser = msg.role === 'user';
           return (
             <div
-              key={msg.id}
+              key={`${msg.id}-${idx}`}
               className={`flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}
             >
               {!isUser && (

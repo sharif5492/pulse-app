@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, Radio } from 'lucide-react';
+import { Plus, Radio, Sparkles } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 
@@ -7,55 +7,85 @@ export const StoriesTray: React.FC = () => {
   const { stories, openStoryViewer, openCreateModal, openLiveRoom, liveRooms, setActiveTab } = useApp();
   const { user } = useAuth();
 
+  // Find user's own story in list
+  const userStoryIndex = stories.findIndex((s) => s.id === 'story_me' || (user && s.user?.id === user.id));
+  const userStory = userStoryIndex >= 0 ? stories[userStoryIndex] : null;
+  const hasUserStory = !!(userStory && userStory.items && userStory.items.length > 0);
+  const latestUserItem = hasUserStory ? userStory.items[0] : null;
+
   const handleUserStoryClick = () => {
-    // If user has a story, open it, else open camera / story creator
-    const myStoryIdx = stories.findIndex((s) => s.id === 'story_me' || (user && s.user.id === user.id));
-    if (myStoryIdx >= 0 && stories[myStoryIdx].items.length > 0) {
-      openStoryViewer(myStoryIdx);
+    if (hasUserStory && userStoryIndex >= 0) {
+      openStoryViewer(userStoryIndex);
     } else {
-      setActiveTab('camera');
+      openCreateModal('story');
     }
   };
 
+  const handleAddStoryButton = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    openCreateModal('story');
+  };
+
   return (
-    <div className="w-full bg-slate-950/60 border-b border-slate-850/80 py-3 px-4 overflow-x-auto no-scrollbar">
+    <div className="w-full bg-slate-950/70 border-b border-slate-800/80 py-3 px-4 overflow-x-auto no-scrollbar">
       <div className="flex items-center gap-3.5 min-w-max">
         {/* Your Story button */}
-        <div className="flex flex-col items-center gap-1.5 cursor-pointer group">
+        <div className="flex flex-col items-center gap-1.5 cursor-pointer group select-none">
           <div className="relative">
             <button
               onClick={handleUserStoryClick}
-              className="w-16 h-16 rounded-full p-0.5 border-2 border-slate-700 hover:border-fuchsia-500 overflow-hidden transition-all group-hover:scale-105"
+              className={`w-16 h-16 rounded-full overflow-hidden transition-all group-hover:scale-105 ${
+                hasUserStory
+                  ? 'p-[2.5px] bg-gradient-to-tr from-fuchsia-500 via-pink-500 to-indigo-500 shadow-[0_0_12px_rgba(217,70,239,0.4)]'
+                  : 'p-0.5 border-2 border-dashed border-slate-600 hover:border-fuchsia-400'
+              }`}
             >
-              <img
-                src={user?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80'}
-                alt="Your Story"
-                className="w-full h-full object-cover rounded-full"
-              />
+              <div className="w-full h-full rounded-full bg-slate-950 p-[2px] overflow-hidden">
+                <img
+                  src={
+                    latestUserItem?.url ||
+                    user?.avatar ||
+                    'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80'
+                  }
+                  alt="Your Story"
+                  className="w-full h-full object-cover rounded-full"
+                />
+              </div>
             </button>
+
+            {/* Quick Add Plus Badge */}
             <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setActiveTab('camera');
-              }}
-              className="absolute bottom-0 right-0 w-5 h-5 bg-gradient-to-tr from-fuchsia-600 via-indigo-600 to-pink-500 rounded-full flex items-center justify-center border-2 border-slate-950 text-white shadow-md hover:scale-110 transition-transform"
-              title="Record Story with Camera & Filters"
+              onClick={handleAddStoryButton}
+              className={`absolute bottom-0 right-0 w-5 h-5 rounded-full flex items-center justify-center border-2 border-slate-950 text-white shadow-md hover:scale-110 transition-transform ${
+                hasUserStory
+                  ? 'bg-fuchsia-600 hover:bg-fuchsia-500'
+                  : 'bg-gradient-to-tr from-fuchsia-600 via-indigo-600 to-pink-500'
+              }`}
+              title="Add a Snap to Story"
             >
               <Plus className="w-3.5 h-3.5 stroke-[3]" />
             </button>
           </div>
-          <span className="text-[11px] font-medium text-slate-300 max-w-[64px] truncate">
-            Your Story
-          </span>
+
+          <div className="flex flex-col items-center">
+            <span className="text-[11px] font-semibold text-slate-200 max-w-[64px] truncate">
+              Your Story
+            </span>
+            {hasUserStory && (
+              <span className="text-[9px] font-bold text-fuchsia-400">
+                {userStory.items.length} {userStory.items.length === 1 ? 'snap' : 'snaps'}
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Stories from following creators */}
         {stories.map((story, idx) => {
-          if (story.id === 'story_me' || (user && story.user.id === user.id)) return null;
+          if (story.id === 'story_me' || (user && story.user?.id === user.id)) return null;
 
           return (
             <div
-              key={story.id}
+              key={`${story.id}-${idx}`}
               onClick={() => {
                 if (story.isLiveNow) {
                   const relatedLive = liveRooms.find((r) => r.host.id === story.user.id);
@@ -66,7 +96,7 @@ export const StoriesTray: React.FC = () => {
                 }
                 openStoryViewer(idx);
               }}
-              className="flex flex-col items-center gap-1.5 cursor-pointer group"
+              className="flex flex-col items-center gap-1.5 cursor-pointer group select-none"
             >
               <div className="relative">
                 {/* Vibrant Gradient ring */}

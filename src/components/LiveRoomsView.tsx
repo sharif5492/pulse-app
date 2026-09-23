@@ -63,9 +63,9 @@ export const LiveRoomsView: React.FC = () => {
 
       {/* Live Streams Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {filteredRooms.map((room) => (
+        {filteredRooms.map((room, idx) => (
           <div
-            key={room.id}
+            key={`${room.id}-${idx}`}
             onClick={() => openLiveRoom(room)}
             className="group relative rounded-2xl bg-slate-900 border border-slate-800 overflow-hidden cursor-pointer hover:border-fuchsia-500/50 transition-all hover:shadow-xl hover:shadow-fuchsia-950/30 flex flex-col"
           >

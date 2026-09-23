@@ -100,7 +100,7 @@ export const HomeFeed: React.FC = () => {
 
           {reels.map((reel, idx) => (
             <div
-              key={reel.id}
+              key={`${reel.id}-${idx}`}
               className="rounded-3xl bg-slate-900/90 border border-slate-800/90 overflow-hidden shadow-xl shadow-slate-950/40"
             >
               {/* Creator Header */}
@@ -188,9 +188,9 @@ export const HomeFeed: React.FC = () => {
                     <button
                       onClick={() => {
                         navigator.clipboard?.writeText(window.location.href);
-                        alert('Link copied to clipboard!');
                       }}
-                      className="text-slate-300 hover:text-white transition-colors"
+                      title="Share Reel link"
+                      className="text-slate-300 hover:text-white transition-colors active:scale-90"
                     >
                       <Share2 className="w-4.5 h-4.5" />
                     </button>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Activity, Bell, MessageCircle, Radio, Sparkles, Smartphone, Monitor, Camera, Settings } from 'lucide-react';
+import { Activity, Bell, MessageCircle, Radio, Sparkles, Smartphone, Monitor, Camera, Settings, UserPlus, QrCode, Coins, Wallet } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { audioUtils } from '../lib/audioUtils';
@@ -11,9 +11,17 @@ export const Header: React.FC = () => {
     unreadNotifsCount, 
     unreadDMsCount, 
     isMobilePreviewFrame,
-    toggleMobilePreviewFrame
+    toggleMobilePreviewFrame,
+    openUserSearchModal,
+    openCoinsRewardModal,
+    openPaymentWallet,
+    connections,
   } = useApp();
-  const { user, isSupabaseConfigured, openAuthModal } = useAuth();
+  const { user, isSupabaseConfigured, openAuthModal, pulseCoins } = useAuth();
+
+  const incomingRequestsCount = connections.filter(
+    (c) => c.status === 'pending' && (c.receiverId === user?.id || c.receiver?.id === user?.id || c.receiverId === 'usr_current')
+  ).length;
 
   // Hide top header when inside dedicated full-screen camera, reels or live rooms
   if (activeTab === 'camera') {
@@ -45,6 +53,20 @@ export const Header: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Coin Wallet Button in Reels */}
+          <button
+            onClick={() => {
+              audioUtils.playPop();
+              openPaymentWallet('purchase');
+            }}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/20 border border-amber-400/50 text-amber-300 hover:bg-amber-500/30 transition-all text-xs font-black backdrop-blur-md shadow-sm"
+            title="Wallet: Buy Coins & Cashout (JazzCash, Easypaisa, PayPal, Skrill)"
+          >
+            <Coins className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+            <span>{pulseCoins.toLocaleString()}</span>
+            <span className="text-[10px] bg-emerald-500/30 text-emerald-300 px-1 rounded font-bold">+</span>
+          </button>
+
           <button
             onClick={() => {
               audioUtils.playPop();
@@ -54,6 +76,22 @@ export const Header: React.FC = () => {
             title="Camera & Filters"
           >
             <Camera className="w-4 h-4" />
+          </button>
+
+          <button
+            onClick={() => {
+              audioUtils.playPop();
+              openUserSearchModal();
+            }}
+            className="relative p-2 text-white/90 hover:text-white hover:bg-white/10 rounded-full transition-colors backdrop-blur-md flex items-center gap-1"
+            title="Add Friends & Quick Add"
+          >
+            <UserPlus className="w-4 h-4 text-fuchsia-300" />
+            {incomingRequestsCount > 0 && (
+              <span className="absolute top-1 right-1 bg-rose-500 text-white text-[9px] font-black w-3.5 h-3.5 rounded-full flex items-center justify-center animate-pulse shadow-sm">
+                {incomingRequestsCount}
+              </span>
+            )}
           </button>
 
           <button
@@ -125,6 +163,53 @@ export const Header: React.FC = () => {
       </div>
 
       <div className="flex items-center gap-1.5 sm:gap-2">
+        {/* Pulse Coins Wallet Pill */}
+        <button
+          onClick={() => {
+            audioUtils.playPop();
+            openCoinsRewardModal();
+          }}
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-300 hover:bg-amber-500/25 transition-all text-xs font-black shadow-sm group"
+          title="Pulse Coins Wallet & Rewards Hub"
+          aria-label="Coins Wallet"
+        >
+          <Coins className="w-3.5 h-3.5 text-amber-400 group-hover:rotate-12 transition-transform" />
+          <span className="text-[11px] sm:text-xs font-black tracking-tight">{pulseCoins.toLocaleString()}</span>
+        </button>
+
+        {/* Instant Deposit & Cashout Wallet Button */}
+        <button
+          onClick={() => {
+            audioUtils.playPop();
+            openPaymentWallet('purchase');
+          }}
+          className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/25 transition-all text-xs font-black shadow-sm"
+          title="Payment Wallet: Deposit & Cashout (JazzCash, Easypaisa, PayPal, Skrill)"
+          aria-label="Payment Wallet"
+        >
+          <Wallet className="w-3.5 h-3.5 text-emerald-400" />
+          <span className="text-[11px] font-bold hidden xs:inline">Wallet</span>
+        </button>
+
+        {/* Find & Add Friends by ID / Barcode */}
+        <button
+          onClick={() => {
+            audioUtils.playPop();
+            openUserSearchModal();
+          }}
+          className="relative flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gradient-to-r from-fuchsia-600/25 to-indigo-600/25 border border-fuchsia-500/40 text-fuchsia-300 hover:text-white hover:bg-fuchsia-600/35 transition-all text-xs font-semibold shadow-sm"
+          title="Add Friends (WhatsApp & Snapchat Style)"
+          aria-label="Find and Add Friends"
+        >
+          <UserPlus className="w-3.5 h-3.5 text-fuchsia-400" />
+          <span className="text-[11px] font-bold">Add Friends</span>
+          {incomingRequestsCount > 0 && (
+            <span className="bg-rose-500 text-white text-[10px] font-black px-1.5 py-0.2 rounded-full animate-pulse shadow-sm">
+              {incomingRequestsCount}
+            </span>
+          )}
+        </button>
+
         {/* Camera Shortcut */}
         <button
           onClick={() => {

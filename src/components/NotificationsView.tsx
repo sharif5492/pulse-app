@@ -23,6 +23,7 @@ export const NotificationsView: React.FC = () => {
     acceptConnectionRequest,
     declineConnectionRequest,
     getConnectionStatusWith,
+    startChatWithUser,
   } = useApp();
   const { user } = useAuth();
 
@@ -94,7 +95,11 @@ export const NotificationsView: React.FC = () => {
       setActiveTab('reels');
       setActiveReelIndex(0);
     } else if (item.type === 'connection_request' || item.type === 'connection_accepted' || item.type === 'follow') {
-      viewProfileUser(item.actor);
+      if (item.type === 'connection_accepted' || item.connectionStatus === 'accepted') {
+        startChatWithUser(item.actor);
+      } else {
+        viewProfileUser(item.actor);
+      }
     }
   };
 
@@ -172,18 +177,18 @@ export const NotificationsView: React.FC = () => {
             </p>
           </div>
         ) : (
-          filteredNotifications.map((notif) => {
+          filteredNotifications.map((notif, idx) => {
             const isConnectionReq =
               notif.type === 'connection_request' ||
               (notif.type === 'follow' && notif.connectionStatus === 'pending');
             const connectionStatus = notif.connectionStatus || (isConnectionReq ? 'pending' : undefined);
             const isPending = connectionStatus === 'pending';
-            const isAccepted = connectionStatus === 'accepted';
+            const isAccepted = connectionStatus === 'accepted' || notif.type === 'connection_accepted';
             const isDeclined = connectionStatus === 'declined';
 
             return (
               <div
-                key={notif.id}
+                key={`${notif.id}-${idx}`}
                 onClick={() => handleNotificationClick(notif)}
                 className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-2xl border transition-all cursor-pointer group ${
                   notif.isRead
@@ -251,10 +256,23 @@ export const NotificationsView: React.FC = () => {
                       </button>
                     </div>
                   ) : isAccepted ? (
-                    <span className="text-[10px] font-bold text-emerald-300 bg-emerald-500/20 border border-emerald-500/40 px-2.5 py-1 rounded-xl flex items-center gap-1">
-                      <Check className="w-3 h-3 text-emerald-400" />
-                      <span>Connected</span>
-                    </span>
+                    <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                      <span className="hidden sm:inline-flex text-[10px] font-bold text-emerald-300 bg-emerald-500/20 border border-emerald-500/40 px-2 py-1 rounded-xl items-center gap-1">
+                        <Check className="w-3 h-3 text-emerald-400" />
+                        <span>Connected</span>
+                      </span>
+                      <button
+                        onClick={() => {
+                          audioUtils.playPop();
+                          startChatWithUser(notif.actor);
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-fuchsia-600 hover:from-indigo-500 hover:to-fuchsia-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-indigo-900/30 active:scale-95"
+                        title="Start Chat with Friend"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5" />
+                        <span>Chat</span>
+                      </button>
+                    </div>
                   ) : isDeclined ? (
                     <span className="text-[10px] font-medium text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">
                       Declined

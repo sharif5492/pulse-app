@@ -3,11 +3,12 @@ import {
   PhoneOff, Mic, MicOff, Video, VideoOff, 
   RotateCcw, Volume2, VolumeX, Maximize2, Minimize2, 
   Sparkles, ShieldCheck, Wifi, Radio, Wand2, 
-  Check, Headphones, Sliders, X, Zap
+  Check, Headphones, Sliders, X, Zap, MessageCircle
 } from 'lucide-react';
 import { ActiveCallSession, VoiceEffect } from '../types';
 import { audioUtils } from '../lib/audioUtils';
 import { VOICE_PRESETS, voiceChanger } from '../lib/voiceChanger';
+import { useApp } from '../context/AppContext';
 
 interface CallOverlayProps {
   session: ActiveCallSession;
@@ -28,6 +29,7 @@ export const CallOverlay: React.FC<CallOverlayProps> = ({
   onToggleSpeaker,
   onSetVoiceEffect,
 }) => {
+  const { startChatWithUser } = useApp();
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const [isMinimized, setIsMinimized] = useState(false);
@@ -111,6 +113,16 @@ export const CallOverlay: React.FC<CallOverlayProps> = ({
             <button
               onClick={() => {
                 audioUtils.playPop();
+                startChatWithUser(session.participant);
+              }}
+              className="p-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-950/40"
+              title="Chat with Caller"
+            >
+              <MessageCircle className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => {
+                audioUtils.playPop();
                 setIsMinimized(false);
               }}
               className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white"
@@ -176,6 +188,19 @@ export const CallOverlay: React.FC<CallOverlayProps> = ({
           >
             <Wand2 className="w-3.5 h-3.5 text-fuchsia-400 animate-pulse" />
             <span>{VOICE_PRESETS[activeEffect].shortName}</span>
+          </button>
+
+          <button
+            onClick={() => {
+              audioUtils.playPop();
+              setIsMinimized(true);
+              startChatWithUser(session.participant);
+            }}
+            className="px-3 py-1 rounded-full bg-slate-900/80 hover:bg-indigo-600/30 text-indigo-300 hover:text-white border border-indigo-500/40 transition-all flex items-center gap-1.5 text-xs font-semibold backdrop-blur-md"
+            title="Open Chat with Caller"
+          >
+            <MessageCircle className="w-3.5 h-3.5 text-indigo-400" />
+            <span>Chat</span>
           </button>
 
           <button
@@ -593,6 +618,20 @@ export const CallOverlay: React.FC<CallOverlayProps> = ({
           >
             {session.isSpeakerOn ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
             <span className="text-[9px] font-semibold">{session.isSpeakerOn ? 'Speaker' : 'Earpiece'}</span>
+          </button>
+
+          {/* In-Call Chat button */}
+          <button
+            onClick={() => {
+              audioUtils.playPop();
+              setIsMinimized(true);
+              startChatWithUser(session.participant);
+            }}
+            className="p-3.5 rounded-2xl bg-slate-800 hover:bg-indigo-600/30 text-indigo-300 hover:text-white border border-indigo-500/30 transition-all shadow-md flex flex-col items-center gap-1"
+            title="Chat while on Call"
+          >
+            <MessageCircle className="w-5 h-5 text-indigo-400" />
+            <span className="text-[9px] font-semibold">Chat</span>
           </button>
 
           {/* End Call Button */}

@@ -84,9 +84,9 @@ export const BlockedUsersModal: React.FC<BlockedUsersModalProps> = ({ isOpen, on
               </p>
             </div>
           ) : (
-            filteredBlockedUsers.map((u: User) => (
+            filteredBlockedUsers.map((u: User, idx: number) => (
               <div
-                key={u.id}
+                key={`${u.id}-${idx}`}
                 className="p-3 rounded-2xl bg-slate-950/80 border border-slate-800/80 hover:border-slate-700 flex items-center justify-between gap-3 transition-colors"
               >
                 <div className="flex items-center gap-3 min-w-0">

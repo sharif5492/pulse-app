@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { Sparkles, Heart, Activity, ArrowRight, Volume2, VolumeX } from 'lucide-react';
 import { audioUtils } from '../lib/audioUtils';
 
 interface SplashScreenProps {
@@ -7,143 +6,89 @@ interface SplashScreenProps {
 }
 
 export const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
-  const [secondsLeft, setSecondsLeft] = useState(5);
-  const [progress, setProgress] = useState(0);
-  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [isExiting, setIsExiting] = useState(false);
 
-  // Play audio heartbeat on mount and at 1.4s heartbeat intervals
   useEffect(() => {
-    if (soundEnabled) {
-      audioUtils.playHeartbeat();
-      const beatInterval = setInterval(() => {
-        audioUtils.playHeartbeat();
-      }, 1400);
+    // Play quick subtle pulse sound on load
+    audioUtils.playPop();
 
-      return () => clearInterval(beatInterval);
-    }
-  }, [soundEnabled]);
+    // Fast, lightweight 900ms display before smooth 200ms fade-out
+    const fadeTimer = setTimeout(() => {
+      setIsExiting(true);
+    }, 900);
 
-  // 5 seconds exact countdown and progress bar animation
-  useEffect(() => {
-    const startTime = Date.now();
-    const duration = 5000; // 5000ms = 5 seconds
+    const completeTimer = setTimeout(() => {
+      onComplete();
+    }, 1150);
 
-    const timer = setInterval(() => {
-      const elapsed = Date.now() - startTime;
-      const calculatedProgress = Math.min(100, (elapsed / duration) * 100);
-      setProgress(calculatedProgress);
-
-      const rem = Math.max(0, Math.ceil((duration - elapsed) / 1000));
-      setSecondsLeft(rem);
-
-      if (elapsed >= duration) {
-        clearInterval(timer);
-        onComplete();
-      }
-    }, 50);
-
-    return () => clearInterval(timer);
+    return () => {
+      clearTimeout(fadeTimer);
+      clearTimeout(completeTimer);
+    };
   }, [onComplete]);
 
+  const handleSkip = () => {
+    setIsExiting(true);
+    setTimeout(onComplete, 100);
+  };
+
   return (
-    <div className="fixed inset-0 z-[100] flex flex-col items-center justify-between p-6 bg-slate-950 text-slate-100 select-none overflow-hidden animate-in fade-in duration-300">
-      {/* Background Ambient Glows & Mesh Gradients */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[480px] h-[480px] bg-gradient-to-tr from-fuchsia-600/25 via-indigo-600/20 to-pink-500/20 rounded-full blur-[110px] pointer-events-none -z-10 animate-heart-aura" />
-      <div className="absolute top-10 left-10 w-44 h-44 bg-fuchsia-500/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-10 right-10 w-44 h-44 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+    <div
+      onClick={handleSkip}
+      onTouchStart={handleSkip}
+      className={`fixed inset-0 z-[100] flex flex-col items-center justify-center bg-slate-950 text-slate-100 select-none overflow-hidden transition-all duration-300 ease-out cursor-pointer ${
+        isExiting ? 'opacity-0 scale-105 pointer-events-none' : 'opacity-100 scale-100'
+      }`}
+    >
+      {/* Background Subtle Ambient Glow */}
+      <div className="absolute w-72 h-72 bg-fuchsia-600/20 rounded-full blur-[90px] pointer-events-none -z-10 animate-pulse" />
+      <div className="absolute w-60 h-60 bg-pink-500/15 rounded-full blur-[80px] pointer-events-none -z-10" />
 
-      {/* Top Header Row with Sound Toggle & Skip */}
-      <div className="w-full max-w-md flex items-center justify-between pt-2">
-        <button
-          onClick={() => setSoundEnabled(!soundEnabled)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900/80 border border-slate-800 text-slate-400 hover:text-white text-xs transition-colors backdrop-blur-md"
-          title={soundEnabled ? "Mute heartbeat sound" : "Unmute heartbeat sound"}
-        >
-          {soundEnabled ? (
-            <>
-              <Volume2 className="w-3.5 h-3.5 text-fuchsia-400" />
-              <span>Sound On</span>
-            </>
-          ) : (
-            <>
-              <VolumeX className="w-3.5 h-3.5 text-slate-500" />
-              <span>Muted</span>
-            </>
-          )}
-        </button>
-
-        <button
-          onClick={onComplete}
-          className="flex items-center gap-1 text-xs font-semibold text-slate-400 hover:text-fuchsia-300 px-3 py-1.5 rounded-full bg-slate-900/60 hover:bg-slate-800 border border-slate-800 transition-all group backdrop-blur-md"
-        >
-          <span>Skip</span>
-          <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
-        </button>
-      </div>
-
-      {/* Center 3D Glowing Pulsing Heart & App Identity */}
-      <div className="flex flex-col items-center justify-center my-auto text-center space-y-6">
-        {/* Pulsing 3D Heart Visual Container */}
-        <div className="relative flex items-center justify-center">
-          {/* Outer Ripple Rings */}
-          <div className="absolute w-44 h-44 rounded-full border border-fuchsia-500/20 animate-ping opacity-60 pointer-events-none" />
-          <div className="absolute w-36 h-36 rounded-full bg-gradient-to-r from-fuchsia-600/30 to-indigo-600/30 blur-xl animate-heart-aura pointer-events-none" />
-
-          {/* 3D Pulsing Heart Card / Sphere */}
-          <div className="relative w-28 h-28 sm:w-32 sm:h-32 rounded-3xl bg-gradient-to-tr from-slate-900 via-slate-850 to-slate-900 border-2 border-fuchsia-500/40 flex items-center justify-center shadow-[0_0_50px_rgba(217,70,239,0.4)] animate-heartbeat">
-            {/* Glossy top reflection */}
-            <div className="absolute top-2 left-3 right-3 h-6 bg-gradient-to-b from-white/20 to-transparent rounded-t-2xl pointer-events-none" />
-
-            {/* Glowing 3D Heart Symbol */}
-            <div className="relative text-fuchsia-500 drop-shadow-[0_4px_20px_rgba(236,72,153,0.8)]">
-              <Heart className="w-14 h-14 sm:w-16 sm:h-16 fill-gradient-to-tr from-fuchsia-500 to-pink-500 stroke-white/90 stroke-[1.8] fill-fuchsia-500" />
-              <Activity className="w-6 h-6 text-white absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 stroke-[2.8]" />
-            </div>
-
-            {/* Sparkle badge */}
-            <div className="absolute -top-1 -right-1 w-7 h-7 rounded-full bg-gradient-to-tr from-fuchsia-500 to-pink-400 flex items-center justify-center text-white shadow-lg border-2 border-slate-950">
-              <Sparkles className="w-3.5 h-3.5" />
-            </div>
+      {/* Centered Pulse Logo & Wordmark */}
+      <div className="relative flex flex-col items-center justify-center space-y-4">
+        {/* Glowing Pulse Heart Emblem */}
+        <div className="relative flex items-center justify-center animate-bounce duration-1000">
+          <div className="w-20 h-20 rounded-2xl bg-gradient-to-tr from-fuchsia-600/40 via-pink-500/30 to-indigo-600/30 border border-fuchsia-500/50 backdrop-blur-md flex items-center justify-center shadow-[0_0_35px_rgba(217,70,239,0.45)]">
+            <svg viewBox="0 0 48 48" className="w-12 h-12 overflow-visible">
+              <defs>
+                <linearGradient id="splash-heart-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#f43f5e" />
+                  <stop offset="50%" stopColor="#ec4899" />
+                  <stop offset="100%" stopColor="#d946ef" />
+                </linearGradient>
+              </defs>
+              <path
+                d="M24 40.5C24 40.5 6 28.5 6 16.5C6 10.5 10.5 6 16.5 6C20.2 6 23 8 24 10.5C25 8 27.8 6 31.5 6C37.5 6 42 10.5 42 16.5C42 28.5 24 40.5 24 40.5Z"
+                fill="none"
+                stroke="url(#splash-heart-grad)"
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="filter drop-shadow-[0_0_10px_rgba(244,63,94,0.9)]"
+              />
+              <circle cx="24" cy="21" r="3.5" fill="#ffffff" className="animate-ping origin-center" />
+            </svg>
           </div>
+
+          {/* Pulse Expansion Ripple */}
+          <div className="absolute inset-0 -m-3 rounded-2xl border border-fuchsia-400/40 animate-ping pointer-events-none" />
         </div>
 
-        {/* App Title with High Contrast Vibrant Gradient */}
-        <div className="space-y-1">
-          <h1 className="text-4xl sm:text-5xl font-black tracking-wider bg-gradient-to-r from-fuchsia-400 via-pink-400 to-indigo-300 bg-clip-text text-transparent italic drop-shadow-sm">
+        {/* Wordmark */}
+        <div className="flex flex-col items-center">
+          <h1 className="text-3xl font-black italic tracking-[0.25em] bg-gradient-to-r from-pink-400 via-fuchsia-300 to-indigo-300 bg-clip-text text-transparent drop-shadow-[0_0_15px_rgba(236,72,153,0.6)]">
             PULSE
           </h1>
-          <p className="text-xs font-semibold tracking-widest uppercase text-slate-400">
-            Next-Gen Social Reels & Live Broadcast
+          <p className="text-[9px] font-bold tracking-[0.2em] text-slate-400 uppercase mt-1">
+            NEXT-GEN SOCIAL
           </p>
-        </div>
-
-        {/* Creator Credit with Special Badge */}
-        <div className="pt-2">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-900/90 border border-fuchsia-500/30 text-xs font-medium text-slate-300 shadow-md backdrop-blur-md">
-            <span className="w-2 h-2 rounded-full bg-fuchsia-400 animate-pulse" />
-            <span>Created by <strong className="text-white font-bold bg-gradient-to-r from-fuchsia-300 to-indigo-200 bg-clip-text text-transparent">Muhammad Sharif</strong></span>
-          </div>
         </div>
       </div>
 
-      {/* Bottom Progress Bar & 5-Second Countdown */}
-      <div className="w-full max-w-xs space-y-2 pb-4 text-center">
-        <div className="flex items-center justify-between text-[11px] text-slate-400 font-medium px-1">
-          <span>Starting Pulse...</span>
-          <span className="text-fuchsia-400 font-bold">{secondsLeft}s</span>
-        </div>
-
-        {/* Progress Track */}
-        <div className="w-full h-1.5 bg-slate-900 rounded-full overflow-hidden border border-slate-800/80 p-0.5">
-          <div
-            className="h-full bg-gradient-to-r from-fuchsia-500 via-pink-500 to-indigo-500 rounded-full transition-all duration-75 shadow-[0_0_12px_rgba(217,70,239,0.7)]"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-        
-        <p className="text-[10px] text-slate-500">
-          Powered by Supabase Auth & Realtime Media
-        </p>
+      {/* Subtle bottom indicator */}
+      <div className="absolute bottom-8 flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+        <span className="w-1.5 h-1.5 rounded-full bg-fuchsia-500 animate-pulse" />
+        <span>Tap anywhere to continue</span>
       </div>
     </div>
   );

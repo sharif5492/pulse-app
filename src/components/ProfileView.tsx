@@ -1,18 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
   Settings, Grid, Heart, Bookmark, Coins, Database, 
   ShieldCheck, LogOut, Sparkles, Plus, Edit3, Share2, 
   Radio, Play, Camera, Mic, Volume2, Check, RefreshCw,
   BookmarkCheck, Trash2, ExternalLink, ArrowLeft,
   ShieldAlert, UserCheck, Phone, Video, MessageSquare,
-  UserX, UserPlus, Lock, Clock, UserMinus
+  UserX, UserPlus, Lock, Clock, UserMinus, Upload, Copy, ChevronRight,
+  Wallet, ArrowDownLeft, ArrowUpRight
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
+import { Reel } from '../types';
 import { EditProfileModal } from './EditProfileModal';
 import { BlockedUsersModal } from './BlockedUsersModal';
 import { audioUtils } from '../lib/audioUtils';
 import { UserStatusBadge } from './UserStatusBadge';
+import { optimizeAvatarImage, savePersistentAvatar } from '../lib/avatarStorage';
 
 export const ProfileView: React.FC = () => {
   const { 
@@ -35,6 +38,7 @@ export const ProfileView: React.FC = () => {
     startCall,
     conversations,
     openConversation,
+    startChatWithUser,
     connections,
     getConnectionStatusWith,
     sendConnectionRequest,
@@ -42,16 +46,42 @@ export const ProfileView: React.FC = () => {
     declineConnectionRequest,
     cancelConnectionRequest,
     isUserOnline,
+    openUserSearchModal,
+    openCoinsRewardModal,
+    openPaymentWallet,
   } = useApp();
-  const { user, logout, isSupabaseConfigured, openAuthModal, pulseCoins, addCoins } = useAuth();
+  const { user, logout, isSupabaseConfigured, openAuthModal, pulseCoins, addCoins, checkinStreak, updateUserProfile } = useAuth();
+  const directAvatarInputRef = useRef<HTMLInputElement>(null);
   
   const [activeSubTab, setActiveSubTab] = useState<'reels' | 'liked' | 'saved' | 'audio'>('reels');
   const [savedFilter, setSavedFilter] = useState<'all' | 'reels' | 'audio'>('all');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isBlockedModalOpen, setIsBlockedModalOpen] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedUserId, setCopiedUserId] = useState(false);
   const [isRefreshingBookmarks, setIsRefreshingBookmarks] = useState(false);
   const [isFollowingTarget, setIsFollowingTarget] = useState(false);
+  const [avatarUploadNotice, setAvatarUploadNotice] = useState<string | null>(null);
+
+  const handleDirectAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      audioUtils.playCameraShutter();
+      try {
+        const optimized = await optimizeAvatarImage(file);
+        if (optimized) {
+          await updateUserProfile({ avatar: optimized });
+          if (user?.id) {
+            await savePersistentAvatar(user.id, optimized);
+          }
+          setAvatarUploadNotice('Profile photo updated!');
+          setTimeout(() => setAvatarUploadNotice(null), 2500);
+        }
+      } catch (err) {
+        console.warn('Direct avatar upload error:', err);
+      }
+    }
+  };
 
   // If viewing another creator's profile
   if (viewingProfileUser) {
@@ -76,19 +106,9 @@ export const ProfileView: React.FC = () => {
 
     const handleOpenTargetChat = () => {
       audioUtils.playPop();
-      let conv = conversations.find((c) => c.participant.id === viewingProfileUser.id);
-      if (!conv) {
-        conv = {
-          id: `conv_${viewingProfileUser.id}`,
-          participant: viewingProfileUser,
-          lastMessage: 'Tap to say hi 👋',
-          lastMessageTime: 'Just now',
-          unreadCount: 0,
-          messages: [],
-        };
+      if (viewingProfileUser) {
+        startChatWithUser(viewingProfileUser);
       }
-      openConversation(conv);
-      setActiveTab('messages');
     };
 
     const handleConnectionButtonClick = () => {
@@ -412,9 +432,9 @@ export const ProfileView: React.FC = () => {
               </div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                {creatorReels.map((reel) => (
+                {creatorReels.map((reel, idx) => (
                   <div
-                    key={reel.id}
+                    key={`${reel.id}-${idx}`}
                     onClick={() => {
                       audioUtils.playPop();
                       const originalIndex = reels.findIndex((r) => r.id === reel.id);
@@ -473,13 +493,24 @@ export const ProfileView: React.FC = () => {
     );
   }
 
-  const myReels = reels.filter((r) => r.user.id === user.id || r.user.id === 'usr_current');
-  const likedReels = reels.filter((r) => r.isLiked);
+  const deduplicate = (list: Reel[]): Reel[] => {
+    const seen = new Set<string>();
+    return list.filter((item) => {
+      if (!item || !item.id || seen.has(item.id)) return false;
+      seen.add(item.id);
+      return true;
+    });
+  };
+
+  const myReels = deduplicate(reels.filter((r) => r.user.id === user.id || r.user.id === 'usr_current'));
+  const likedReels = deduplicate(reels.filter((r) => r.isLiked));
   
   // Combine savedPosts from Supabase bookmarks with any in-memory bookmarked reels
-  const activeSavedList = savedPosts.length > 0 
-    ? savedPosts 
-    : reels.filter((r) => r.isBookmarked);
+  const activeSavedList = deduplicate(
+    savedPosts.length > 0 
+      ? savedPosts 
+      : reels.filter((r) => r.isBookmarked)
+  );
 
   const handleShareProfile = () => {
     audioUtils.playPop();
@@ -496,22 +527,56 @@ export const ProfileView: React.FC = () => {
 
   return (
     <div className="w-full max-w-xl mx-auto px-4 py-4 space-y-5 pb-24 text-slate-100 select-none">
+      {/* Native file input for photo gallery or camera avatar upload */}
+      <input
+        ref={directAvatarInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleDirectAvatarUpload}
+        className="hidden"
+        id="direct-profile-avatar-input"
+        aria-label="Upload profile photo"
+      />
+
+      {avatarUploadNotice && (
+        <div className="p-3 rounded-2xl bg-fuchsia-500/20 border border-fuchsia-500/40 text-fuchsia-300 text-xs font-semibold flex items-center justify-between shadow-lg animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-fuchsia-400" />
+            <span>{avatarUploadNotice}</span>
+          </div>
+          <Check className="w-4 h-4 text-emerald-400" />
+        </div>
+      )}
+
       {/* Profile Header Card */}
       <div className="relative rounded-3xl bg-slate-900 border border-slate-800 p-5 overflow-hidden shadow-xl">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-4">
-            <div className="relative group cursor-pointer" onClick={() => setIsEditModalOpen(true)}>
+            <div className="relative group">
               <img
                 src={user.avatar}
                 alt={user.name}
-                className="w-18 h-18 rounded-full object-cover border-2 border-fuchsia-500 shadow-md group-hover:opacity-90 transition-opacity"
+                onClick={() => setIsEditModalOpen(true)}
+                className="w-18 h-18 rounded-full object-cover border-2 border-fuchsia-500 shadow-md group-hover:opacity-90 transition-opacity cursor-pointer"
               />
-              <UserStatusBadge
-                isOnline={true}
-                size="md"
-                className="absolute bottom-0 right-0 z-10"
-              />
-              <div className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+              <button
+                type="button"
+                id="profile-header-camera-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  audioUtils.playPop();
+                  directAvatarInputRef.current?.click();
+                }}
+                className="absolute bottom-0 right-0 p-1.5 bg-gradient-to-tr from-fuchsia-600 to-indigo-600 hover:from-fuchsia-500 hover:to-indigo-500 rounded-full text-white shadow-md border-2 border-slate-900 cursor-pointer transition-transform hover:scale-110 active:scale-95 z-20"
+                title="Tap to take photo or choose from gallery"
+                aria-label="Upload avatar image"
+              >
+                <Camera className="w-3 h-3" />
+              </button>
+              <div 
+                onClick={() => setIsEditModalOpen(true)}
+                className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+              >
                 <Edit3 className="w-4 h-4 text-white" />
               </div>
             </div>
@@ -525,7 +590,28 @@ export const ProfileView: React.FC = () => {
                   </span>
                 )}
               </div>
-              <span className="text-xs font-medium text-slate-400">@{user.username}</span>
+              <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                <span className="text-xs font-medium text-slate-400">@{user.username}</span>
+                <span className="text-slate-600">•</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    audioUtils.playPop();
+                    navigator.clipboard.writeText(user.id);
+                    setCopiedUserId(true);
+                    setTimeout(() => setCopiedUserId(false), 2000);
+                  }}
+                  className="inline-flex items-center gap-1 bg-slate-950 px-2 py-0.5 rounded-md border border-slate-800 text-[10px] font-mono text-slate-300 hover:text-white hover:border-fuchsia-500/50 transition-colors"
+                  title="Click to copy your User ID for other mobiles to search"
+                >
+                  <span>ID: {user.id}</span>
+                  {copiedUserId ? (
+                    <Check className="w-2.5 h-2.5 text-emerald-400" />
+                  ) : (
+                    <Copy className="w-2.5 h-2.5 text-slate-400" />
+                  )}
+                </button>
+              </div>
 
               {/* Coins Pill & Status Badge & Blocked Quick Badge */}
               <div className="flex items-center gap-2 mt-2 flex-wrap">
@@ -534,10 +620,18 @@ export const ProfileView: React.FC = () => {
                   <span>Online (You)</span>
                 </div>
 
-                <div className="flex items-center gap-1.5 bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 px-2.5 py-0.5 rounded-full text-xs font-bold w-fit">
-                  <Coins className="w-3.5 h-3.5 text-indigo-400" />
-                  <span>{pulseCoins} Coins</span>
-                </div>
+                <button
+                  onClick={() => {
+                    audioUtils.playPop();
+                    openCoinsRewardModal();
+                  }}
+                  className="flex items-center gap-1.5 bg-amber-500/15 border border-amber-500/40 hover:bg-amber-500/25 text-amber-300 px-2.5 py-0.5 rounded-full text-xs font-bold transition-all shadow-sm group w-fit"
+                  title="View Coins & Rewards Wallet"
+                >
+                  <Coins className="w-3.5 h-3.5 text-amber-400 group-hover:rotate-12 transition-transform" />
+                  <span>{pulseCoins.toLocaleString()} Coins</span>
+                  <span className="text-[10px] text-amber-400/80 font-medium">({checkinStreak}d streak 🔥)</span>
+                </button>
 
                 {blockedUserIds.length > 0 && (
                   <button
@@ -608,6 +702,18 @@ export const ProfileView: React.FC = () => {
           </button>
         </div>
 
+        {/* Find & Add Friends by ID or Username */}
+        <button
+          onClick={() => {
+            audioUtils.playPop();
+            openUserSearchModal();
+          }}
+          className="w-full mt-2 py-2 px-3 rounded-xl bg-gradient-to-r from-fuchsia-600 to-indigo-600 hover:from-fuchsia-500 hover:to-indigo-500 text-xs font-bold text-white flex items-center justify-center gap-2 transition-all shadow-md shadow-fuchsia-900/30 active:scale-[0.99]"
+        >
+          <UserPlus className="w-4 h-4" />
+          <span>Find & Add Friends (Search ID)</span>
+        </button>
+
         {/* Stats Row */}
         <div className="grid grid-cols-3 gap-2 mt-4 pt-3 border-t border-slate-800 text-center">
           <div>
@@ -626,6 +732,99 @@ export const ProfileView: React.FC = () => {
             </div>
             <span className="text-[10px] text-slate-400 font-medium">Total Likes</span>
           </div>
+        </div>
+      </div>
+
+      {/* Rewards & Daily Coins Hub Banner */}
+      <div 
+        onClick={() => {
+          audioUtils.playPop();
+          openCoinsRewardModal();
+        }}
+        className="rounded-3xl bg-gradient-to-r from-amber-500/15 via-slate-900 to-amber-500/10 border border-amber-500/30 p-4 shadow-xl flex items-center justify-between cursor-pointer hover:border-amber-400/60 transition-all group"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-amber-500 via-yellow-400 to-amber-300 flex items-center justify-center text-xl shadow-lg shadow-amber-500/20 group-hover:scale-105 transition-transform">
+            🪙
+          </div>
+          <div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-base font-black text-white tracking-tight">
+                {pulseCoins.toLocaleString()}
+              </span>
+              <span className="text-xs font-bold text-amber-400">Pulse Coins</span>
+            </div>
+            <p className="text-[11px] text-slate-400">
+              Daily Streak: <span className="text-amber-300 font-bold">{checkinStreak} Days 🔥</span> • Earn coins by watching & check-ins
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 group-hover:bg-amber-500 group-hover:text-slate-950 font-black text-xs transition-all shrink-0">
+          <span>Rewards Hub</span>
+          <ChevronRight className="w-3.5 h-3.5" />
+        </div>
+      </div>
+
+      {/* Payment Wallet & Payouts Card (JazzCash, Easypaisa, PayPal, Skrill) */}
+      <div className="rounded-3xl bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900 border border-slate-700/80 p-4 shadow-xl space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center text-slate-950 font-black shadow-md">
+              <Wallet className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-black text-white">Payment & Payout Wallet</h3>
+                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  Upcoming Update
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400">
+                JazzCash, Easypaisa, PayPal & Skrill
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => {
+              audioUtils.playPop();
+              openPaymentWallet('history');
+            }}
+            className="text-[11px] font-bold text-indigo-400 hover:text-indigo-300 transition-colors"
+          >
+            History
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 pt-1">
+          <button
+            onClick={() => {
+              audioUtils.playPop();
+              openPaymentWallet('purchase');
+            }}
+            className="py-2.5 px-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/20 active:scale-95 transition-all"
+          >
+            <ArrowDownLeft className="w-4 h-4 text-emerald-200" />
+            <span>Buy Coins (Upcoming)</span>
+          </button>
+
+          <button
+            onClick={() => {
+              audioUtils.playPop();
+              openPaymentWallet('withdraw');
+            }}
+            className="py-2.5 px-3 rounded-2xl bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-500 hover:to-yellow-500 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 shadow-md shadow-amber-600/20 active:scale-95 transition-all"
+          >
+            <ArrowUpRight className="w-4 h-4 text-slate-950" />
+            <span>Withdraw (Upcoming)</span>
+          </button>
+        </div>
+
+        {/* Notice directly underneath payment method options as requested */}
+        <div className="p-2.5 rounded-2xl bg-amber-950/40 border border-amber-500/30 text-xs text-amber-300 font-semibold flex items-center gap-2">
+          <Clock className="w-4 h-4 text-amber-400 shrink-0" />
+          <span>upcoming update purchase and withdrawal</span>
         </div>
       </div>
 
@@ -698,9 +897,9 @@ export const ProfileView: React.FC = () => {
               </button>
             </div>
           ) : (
-            myReels.map((reel) => (
+            myReels.map((reel, idx) => (
               <div
-                key={reel.id}
+                key={`${reel.id}-${idx}`}
                 onClick={() => {
                   audioUtils.playPop();
                   const originalIndex = reels.findIndex((r) => r.id === reel.id);
@@ -743,9 +942,9 @@ export const ProfileView: React.FC = () => {
               You haven't liked any reels yet.
             </div>
           ) : (
-            likedReels.map((reel) => (
+            likedReels.map((reel, idx) => (
               <div
-                key={reel.id}
+                key={`${reel.id}-${idx}`}
                 onClick={() => {
                   audioUtils.playPop();
                   const originalIndex = reels.findIndex((r) => r.id === reel.id);
@@ -825,10 +1024,10 @@ export const ProfileView: React.FC = () => {
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-              {activeSavedList.map((reel) => {
+              {activeSavedList.map((reel, idx) => {
                 return (
                   <div
-                    key={reel.id}
+                    key={`${reel.id}-${idx}`}
                     onClick={() => {
                       audioUtils.playPop();
                       const originalIndex = reels.findIndex((r) => r.id === reel.id);

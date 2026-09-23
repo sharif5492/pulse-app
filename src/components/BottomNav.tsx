@@ -75,14 +75,14 @@ export const BottomNav: React.FC = () => {
         <button
           onClick={() => handleTabClick('dms')}
           className={`relative flex flex-col items-center justify-center w-12 py-1 rounded-xl transition-all ${
-            activeTab === 'dms'
+            activeTab === 'dms' || activeTab === 'messages'
               ? 'text-fuchsia-400 scale-105 font-bold'
               : 'text-slate-400 hover:text-slate-200'
           }`}
           aria-label="Direct Messages"
         >
           <MessageCircle className="w-5 h-5 stroke-[2.2]" />
-          <span className="text-[10px] font-semibold mt-0.5">DMs</span>
+          <span className="text-[10px] font-semibold mt-0.5">Chat</span>
           {unreadDMsCount > 0 && (
             <span className="absolute top-0.5 right-2 bg-indigo-500 text-white text-[9px] font-black w-3.5 h-3.5 rounded-full flex items-center justify-center border border-slate-950">
               {unreadDMsCount}
