@@ -111,38 +111,14 @@ export const AuthModal: React.FC = () => {
             <div>
               <span className="font-semibold text-slate-200">Supabase Integration: </span>
               <span className={isSupabaseConfigured ? 'text-emerald-400 font-medium' : 'text-indigo-400 font-medium'}>
-                {isSupabaseConfigured ? 'Connected & Active' : 'Demo / Sandbox Ready'}
+                {isSupabaseConfigured ? 'Connected & Active' : 'Auto-Connecting'}
               </span>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => setShowConfigGuide(!showConfigGuide)}
-            className="text-[11px] text-fuchsia-400 hover:text-fuchsia-300 font-medium underline underline-offset-2"
-          >
-            {showConfigGuide ? 'Hide Info' : 'Details'}
-          </button>
+          <span className="text-[10px] text-emerald-400 font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+            Secure
+          </span>
         </div>
-
-        {/* Supabase Config Diagnostic drawer */}
-        {showConfigGuide && (
-          <div className="mb-5 p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300 space-y-2">
-            <div className="flex items-center gap-1.5 font-semibold text-white">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              <span>Supabase Auth & Database Config</span>
-            </div>
-            <p className="text-[11px] text-slate-400 leading-relaxed">
-              Pulse connects directly to Supabase Auth. To bind your live production database, set your environment variables:
-            </p>
-            <div className="bg-slate-900 p-2 rounded-lg font-mono text-[10px] text-fuchsia-300 space-y-1 overflow-x-auto">
-              <div>VITE_SUPABASE_URL="https://your-app.supabase.co"</div>
-              <div>VITE_SUPABASE_ANON_KEY="eyJhbGciOi..."</div>
-            </div>
-            <p className="text-[11px] text-slate-400">
-              *While in preview sandbox mode, authentication falls back smoothly to interactive local persistence.
-            </p>
-          </div>
-        )}
 
         {/* Auth Mode Switcher */}
         <div className="grid grid-cols-2 p-1 bg-slate-950 rounded-xl mb-4 border border-slate-800">

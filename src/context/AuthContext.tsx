@@ -97,6 +97,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               parsed.username = `pulsar_${suffix}`;
             }
           }
+          if (!parsed.email) {
+            const savedEmail = localStorage.getItem('pulse_user_email');
+            if (savedEmail) parsed.email = savedEmail;
+          }
           const userSpecificAvatar = getPersistentAvatar(parsed.id);
           if (userSpecificAvatar) {
             parsed.avatar = userSpecificAvatar;
@@ -290,8 +294,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       const resolvedBio = dbProfile?.bio ?? meta.bio ?? base.bio ?? 'Exploring beats & reels on Pulse ✨';
 
+      const resolvedEmail = sessionUser.email?.toLowerCase().trim() || base.email || '';
+
       const updatedUser: User = {
         id: sessionUser.id,
+        email: resolvedEmail || undefined,
         name: resolvedName,
         username: resolvedUsername,
         avatar: resolvedAvatar,
@@ -306,6 +313,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (typeof window !== 'undefined') {
         localStorage.setItem('pulse_current_user', JSON.stringify(updatedUser));
         localStorage.setItem('pulse_auth_authenticated', 'true');
+        if (resolvedEmail) {
+          localStorage.setItem('pulse_user_email', resolvedEmail);
+        }
         if (resolvedAvatar) {
           savePersistentAvatar(sessionUser.id, resolvedAvatar);
         }
@@ -409,8 +419,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const dbProfile = await profileService.getProfile(res.user.id);
       const persistentAvatar = getPersistentAvatar(res.user.id) || getPersistentAvatar();
       const resolvedAvatar = persistentAvatar || dbProfile?.avatar || res.user.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&auto=format&fit=crop&q=80';
+      const userEmail = (res.user.email || email).toLowerCase().trim();
       const loggedUser: User = {
         id: res.user.id,
+        email: userEmail,
         name: dbProfile?.name || res.user.name || 'Pulse Member',
         username: dbProfile?.username || res.user.username || 'pulsar',
         avatar: resolvedAvatar,
@@ -425,6 +437,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (typeof window !== 'undefined') {
         localStorage.setItem('pulse_current_user', JSON.stringify(loggedUser));
         localStorage.setItem('pulse_auth_authenticated', 'true');
+        localStorage.setItem('pulse_user_email', userEmail);
         localStorage.removeItem('pulse_is_guest');
         if (resolvedAvatar) {
           savePersistentAvatar(res.user.id, resolvedAvatar);
@@ -444,8 +457,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: false, error: res.error };
     }
     if (res.user) {
+      const userEmail = (res.user.email || email).toLowerCase().trim();
       const newUser: User = {
         id: res.user.id,
+        email: userEmail,
         name: res.user.name,
         username: res.user.username,
         avatar: res.user.avatar,
@@ -460,6 +475,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (typeof window !== 'undefined') {
         localStorage.setItem('pulse_current_user', JSON.stringify(newUser));
         localStorage.setItem('pulse_auth_authenticated', 'true');
+        localStorage.setItem('pulse_user_email', userEmail);
         localStorage.removeItem('pulse_is_guest');
       }
       profileService.updateProfile(res.user.id, newUser).catch(() => {});
@@ -563,6 +579,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.removeItem('pulse_current_user');
       localStorage.removeItem('pulse_auth_authenticated');
       localStorage.removeItem('pulse_is_guest');
+      localStorage.removeItem('pulse_user_email');
     }
     audioUtils.playPop();
   };

@@ -8,7 +8,14 @@ You can test all features of the application using the pre-configured demo profi
 1. DEMO ACCOUNTS (QUICK LOGIN CREDENTIALS)
 -----------------------------------------------------
 
-ACCOUNT 1: ADMIN & CREATOR (Full Privileges)
+MASTER ADMIN ACCOUNT (Full Settings, Supabase & OneSignal Admin Access):
+Email:    sharif5492@gmail.com
+Password: Password123!
+Role:     Super Administrator & App Owner
+Access:   Exclusive access to view & configure SUPABASE CLOUD DATABASE, 
+          table diagnostics, and ONESIGNAL web push credentials.
+
+ACCOUNT 1: VERIFIED CREATOR & CO-ADMIN
 Email:    alex.rivera@pulse.live
 Password: Password123!
 Role:     Verified Creator & Admin

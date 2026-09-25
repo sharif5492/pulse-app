@@ -3,13 +3,22 @@ import { User, UserConnection, ConnectionStatus } from '../types';
 import { getPersistentAvatar, savePersistentAvatar, optimizeAvatarImage } from './avatarStorage';
 import { areUserIdsEqual, getCanonicalConnectionPairKey, normalizeUserId } from '../utils/userIdUtils';
 
-// Retrieve credentials from localStorage (if set by user in Settings) or environment variables
+// Retrieve credentials from environment variables (NEXT_PUBLIC_* or VITE_*) with optional admin override in localStorage
 export function getStoredSupabaseConfig() {
-  const envUrl = (import.meta as any).env?.VITE_SUPABASE_URL || '';
-  const envKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
+  const envUrl = 
+    (import.meta as any).env?.NEXT_PUBLIC_SUPABASE_URL || 
+    (import.meta as any).env?.VITE_SUPABASE_URL || 
+    (typeof process !== 'undefined' && (process.env?.NEXT_PUBLIC_SUPABASE_URL || process.env?.VITE_SUPABASE_URL)) ||
+    '';
+  const envKey = 
+    (import.meta as any).env?.NEXT_PUBLIC_SUPABASE_ANON_KEY || 
+    (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || 
+    (typeof process !== 'undefined' && (process.env?.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env?.VITE_SUPABASE_ANON_KEY)) ||
+    '';
   const localUrl = typeof window !== 'undefined' ? localStorage.getItem('supabase_url') || '' : '';
   const localKey = typeof window !== 'undefined' ? localStorage.getItem('supabase_anon_key') || '' : '';
 
+  // Auto-connect from environment variables if present; allow local storage fallback/admin override
   const url = (localUrl || envUrl).trim();
   const anonKey = (localKey || envKey).trim();
   const isValid = 
