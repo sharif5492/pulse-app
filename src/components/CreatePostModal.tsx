@@ -162,14 +162,24 @@ export const CreatePostModal: React.FC = () => {
     const file = e.target.files?.[0];
     if (file) {
       setUploadedVideoFile(file);
+      // Instant local blob URL with 100% original audio stream
+      const localUrl = URL.createObjectURL(file);
+      setSelectedVideoUrl(localUrl);
+
+      const cleanFileName = file.name.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
+      setReelAudio(`Original Sound - ${cleanFileName || user?.name || 'Pulse Creator'}`);
+
       setIsUploading(true);
-      const storageUrl = await uploadMedia(file);
-      if (storageUrl) {
-        setSelectedVideoUrl(storageUrl);
-      } else {
-        setSelectedVideoUrl(URL.createObjectURL(file));
+      try {
+        const storageUrl = await uploadMedia(file);
+        if (storageUrl) {
+          setSelectedVideoUrl(storageUrl);
+        }
+      } catch (err) {
+        console.warn('Storage upload error:', err);
+      } finally {
+        setIsUploading(false);
       }
-      setIsUploading(false);
     }
   };
 
@@ -579,6 +589,24 @@ export const CreatePostModal: React.FC = () => {
                     </button>
                   ))}
                 </div>
+
+                {/* Video Sound & Visual Preview */}
+                {selectedVideoUrl && (
+                  <div className="relative w-full rounded-2xl overflow-hidden bg-black border border-slate-800 shadow-lg mb-3">
+                    <video
+                      key={selectedVideoUrl}
+                      src={selectedVideoUrl}
+                      playsInline
+                      controls
+                      muted={false}
+                      className="w-full max-h-48 object-contain bg-black"
+                    />
+                    <div className="absolute top-2 left-2 bg-slate-950/80 backdrop-blur-md px-2.5 py-1 rounded-full text-[10px] text-emerald-300 font-semibold border border-emerald-500/30 flex items-center gap-1 pointer-events-none">
+                      <Volume2 className="w-3 h-3 text-emerald-400" />
+                      <span>Sound Enabled (Test Audio)</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>

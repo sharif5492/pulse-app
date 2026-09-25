@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
+import { audioUtils } from '../lib/audioUtils';
 import confetti from 'canvas-confetti';
 
 export const ReelsFeed: React.FC = () => {
@@ -28,6 +29,7 @@ export const ReelsFeed: React.FC = () => {
   const [newCommentText, setNewCommentText] = useState('');
   const [shareSuccess, setShareSuccess] = useState(false);
   const [expandedCaption, setExpandedCaption] = useState(false);
+  const [audioNotice, setAudioNotice] = useState<string | null>(null);
 
   // Watch-to-Earn Promotional Coins Engine
   const [watchSeconds, setWatchSeconds] = useState(0);
@@ -104,18 +106,58 @@ export const ReelsFeed: React.FC = () => {
     }
   };
 
-  // Auto-play when active reel changes
+  const handleUnmute = () => {
+    const video = videoRef.current;
+    if (video) {
+      video.muted = false;
+      video.volume = 1;
+      toggleMute();
+      if (video.paused) {
+        video.play().catch(() => {});
+        setIsPlaying(true);
+      }
+      audioUtils.playPop();
+      setAudioNotice('Audio Unmuted 🔊 (Volume 100%)');
+      setTimeout(() => setAudioNotice(null), 2200);
+    }
+  };
+
+  const handleToggleMute = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (isMuted || video.muted) {
+      handleUnmute();
+    } else {
+      video.muted = true;
+      toggleMute();
+      setAudioNotice('Muted 🔇');
+      setTimeout(() => setAudioNotice(null), 1800);
+    }
+  };
+
+  // Auto-play when active reel changes: try unmuted first, graceful fallback to muted autoplay
   useEffect(() => {
     setIsPlaying(true);
     setExpandedCaption(false);
     setVideoError(false);
-    if (videoRef.current) {
-      videoRef.current.currentTime = 0;
-      videoRef.current.play().catch(() => {
-        // Autoplay policy might require mute
-      });
+    const video = videoRef.current;
+    if (video) {
+      video.currentTime = 0;
+      video.volume = 1;
+
+      if (!isMuted) {
+        video.muted = false;
+        video.play().catch(() => {
+          // If browser restricts unmuted autoplay, gracefully fallback to muted autoplay
+          video.muted = true;
+          video.play().catch(() => {});
+        });
+      } else {
+        video.muted = true;
+        video.play().catch(() => {});
+      }
     }
-  }, [activeReelIndex]);
+  }, [activeReelIndex, isMuted]);
 
   const togglePlayPause = () => {
     if (videoRef.current) {
@@ -127,6 +169,20 @@ export const ReelsFeed: React.FC = () => {
         setIsPlaying(true);
       }
     }
+  };
+
+  const handleReelClick = (e: React.MouseEvent) => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    // Requirement 3: Autoplay initially for feed, but when user taps on reel, unmute it and set volume to 1!
+    if (isMuted || video.muted) {
+      handleUnmute();
+      return;
+    }
+
+    // If already unmuted, toggle play / pause
+    togglePlayPause();
   };
 
   const handleDoubleTap = (e: React.MouseEvent) => {
@@ -194,7 +250,7 @@ export const ReelsFeed: React.FC = () => {
       {/* Video Content Container */}
       <div 
         className="relative w-full h-full max-w-md bg-slate-900 sm:rounded-3xl overflow-hidden shadow-2xl flex items-center justify-center cursor-pointer"
-        onClick={togglePlayPause}
+        onClick={handleReelClick}
         onDoubleClick={handleDoubleTap}
       >
         {!videoError ? (
@@ -205,6 +261,7 @@ export const ReelsFeed: React.FC = () => {
             loop
             muted={isMuted}
             playsInline
+            webkit-playsinline="true"
             autoPlay
             onError={() => setVideoError(true)}
             className="w-full h-full object-cover"
@@ -253,20 +310,60 @@ export const ReelsFeed: React.FC = () => {
           </div>
         )}
 
-        {/* Top Sound Control & Reel Index indicator */}
-        <div className="absolute top-14 left-4 z-20 flex items-center gap-2">
+        {/* Top Sound Control / Speaker Button with Tap-To-Unmute icon */}
+        <div className="absolute top-14 right-4 z-30 flex items-center gap-2">
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
-              toggleMute();
+              handleToggleMute();
             }}
-            className="p-2 rounded-full bg-slate-950/50 hover:bg-slate-950/80 backdrop-blur-md border border-white/10 text-white transition-colors"
-            title={isMuted ? "Unmute" : "Mute"}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full backdrop-blur-md border shadow-xl transition-all hover:scale-105 active:scale-95 ${
+              isMuted
+                ? 'bg-fuchsia-950/85 hover:bg-fuchsia-900 border-fuchsia-500/70 text-white animate-pulse'
+                : 'bg-slate-950/60 hover:bg-slate-950/85 border-white/20 text-white'
+            }`}
+            title={isMuted ? "Tap to unmute sound" : "Sound is ON (Tap to mute)"}
           >
-            {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4 text-fuchsia-400" />}
+            {isMuted ? (
+              <>
+                <VolumeX className="w-4 h-4 text-fuchsia-400 shrink-0" />
+                <span className="text-[11px] font-bold text-white tracking-wide">Tap for sound 🔊</span>
+              </>
+            ) : (
+              <>
+                <Volume2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span className="text-[11px] font-semibold text-slate-200">Sound ON</span>
+              </>
+            )}
           </button>
-          
-          <span className="text-[11px] font-semibold text-white/90 bg-slate-950/50 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10">
+        </div>
+
+        {/* Center Audio Feedback Toast */}
+        {audioNotice && (
+          <div className="absolute top-28 left-1/2 -translate-x-1/2 z-40 bg-slate-950/90 backdrop-blur-md px-4 py-2 rounded-2xl border border-fuchsia-500/50 shadow-2xl flex items-center gap-2 text-xs font-bold text-white animate-in zoom-in-90 fade-in duration-200 pointer-events-none">
+            {isMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4 text-emerald-400 animate-pulse" />}
+            <span>{audioNotice}</span>
+          </div>
+        )}
+
+        {/* Subtle Bottom Muted Reminder Pill */}
+        {isMuted && !videoError && (
+          <div
+            onClick={(e) => {
+              e.stopPropagation();
+              handleUnmute();
+            }}
+            className="absolute bottom-24 left-4 z-20 flex items-center gap-2 bg-slate-950/85 hover:bg-slate-900 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-fuchsia-500/50 text-xs font-semibold text-slate-200 shadow-xl cursor-pointer transition-all hover:scale-105 active:scale-95"
+          >
+            <VolumeX className="w-4 h-4 text-fuchsia-400 animate-pulse" />
+            <span>Video is muted • Tap to turn sound ON 🔊</span>
+          </div>
+        )}
+
+        {/* Top Left Reel Index indicator */}
+        <div className="absolute top-14 left-4 z-20 flex items-center gap-2">
+          <span className="text-[11px] font-semibold text-white/90 bg-slate-950/60 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10 shadow">
             {activeReelIndex + 1} / {reels.length}
           </span>
         </div>

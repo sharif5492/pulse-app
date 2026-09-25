@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pulse - Official Documentation & Setup Guide</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #090d16;
+      --card-bg: #111827;
+      --border: #1f2937;
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+      --primary: #d946ef;
+      --primary-gradient: linear-gradient(135deg, #d946ef 0%, #6366f1 100%);
+      --accent: #6366f1;
+      --code-bg: #030712;
+      --success: #10b981;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      display: flex;
+      min-height: 100vh;
+    }
+
+    /* Sidebar Navigation */
+    aside {
+      width: 290px;
+      background-color: #0c1220;
+      border-right: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+      padding: 30px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      flex-shrink: 0;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .brand-icon {
+      width: 40px;
+      height: 40px;
+      background: var(--primary-gradient);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 20px;
+      color: white;
+      box-shadow: 0 4px 20px rgba(217, 70, 239, 0.4);
+    }
+
+    .brand-text h1 {
+      font-size: 18px;
+      font-weight: 800;
+      background: var(--primary-gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .brand-text p {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .nav-group-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #6b7280;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+
+    .nav-links {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .nav-link {
+      color: var(--text-muted);
+      text-decoration: none;
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 500;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .nav-link:hover, .nav-link.active {
+      color: white;
+      background-color: rgba(217, 70, 239, 0.12);
+      border-left: 3px solid var(--primary);
+    }
+
+    /* Main Content */
+    main {
+      flex: 1;
+      padding: 40px 60px;
+      max-width: 1000px;
+      overflow-y: auto;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 20px;
+      background: rgba(217, 70, 239, 0.15);
+      color: var(--primary);
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      border: 1px solid rgba(217, 70, 239, 0.3);
+    }
+
+    h1.hero-title {
+      font-size: 34px;
+      font-weight: 800;
+      margin-bottom: 10px;
+      letter-spacing: -0.5px;
+    }
+
+    p.hero-subtitle {
+      font-size: 16px;
+      color: var(--text-muted);
+      margin-bottom: 30px;
+    }
+
+    section {
+      margin-bottom: 60px;
+      scroll-margin-top: 40px;
+    }
+
+    h2.section-title {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 10px;
+    }
+
+    p {
+      color: #d1d5db;
+      margin-bottom: 16px;
+      font-size: 14.5px;
+    }
+
+    .card {
+      background-color: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    }
+
+    .card h3 {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: white;
+    }
+
+    /* Code Blocks */
+    .code-container {
+      background-color: var(--code-bg);
+      border: 1px solid #1e293b;
+      border-radius: 12px;
+      margin: 16px 0;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .code-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      background-color: #0b1120;
+      border-bottom: 1px solid #1e293b;
+      font-size: 12px;
+      color: var(--text-muted);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .copy-btn {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: white;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .copy-btn:hover {
+      background: var(--primary);
+    }
+
+    pre {
+      padding: 16px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      overflow-x: auto;
+      color: #e2e8f0;
+      line-height: 1.5;
+    }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 20px 0;
+      font-size: 13.5px;
+    }
+
+    th, td {
+      padding: 12px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    th {
+      background-color: #0f172a;
+      color: white;
+      font-weight: 600;
+    }
+
+    tr:hover td {
+      background-color: rgba(255, 255, 255, 0.02);
+    }
+
+    .alert {
+      padding: 16px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      font-size: 14px;
+      display: flex;
+      gap: 12px;
+    }
+
+    .alert-warning {
+      background-color: rgba(245, 158, 11, 0.1);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      color: #fbbf24;
+    }
+
+    .alert-success {
+      background-color: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #34d399;
+    }
+
+    @media (max-width: 768px) {
+      body {
+        flex-direction: column;
+      }
+      aside {
+        width: 100%;
+        height: auto;
+        position: relative;
+      }
+      main {
+        padding: 24px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Navigation Sidebar -->
+  <aside>
+    <div class="brand">
+      <div class="brand-icon">P</div>
+      <div class="brand-text">
+        <h1>Pulse Social</h1>
+        <p>Buyer Documentation v2.0</p>
+      </div>
+    </div>
+
+    <div>
+      <div class="nav-group-title">Getting Started</div>
+      <div class="nav-links">
+        <a href="#quickstart" class="nav-link active">⚡ Quick Start</a>
+        <a href="#apikeys" class="nav-link">🔑 API Keys Setup</a>
+        <a href="#supabase" class="nav-link">🗄️ Supabase Database</a>
+        <a href="#features" class="nav-link">🌟 Key Features</a>
+        <a href="#deployment" class="nav-link">🌐 Production Deploy</a>
+        <a href="#pwa" class="nav-link">📱 PWA Mobile Install</a>
+        <a href="#faq" class="nav-link">❓ FAQ & Troubleshooting</a>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main>
+    <div class="badge">Commercial Product Documentation</div>
+    <h1 class="hero-title">Pulse - Social Video, Reels & Live Stream Platform</h1>
+    <p class="hero-subtitle">Thank you for purchasing Pulse! This complete guide will help you install, configure API keys, and launch the platform on any server or cloud host.</p>
+
+    <!-- Quick Start Section -->
+    <section id="quickstart">
+      <h2 class="section-title">⚡ 1. Quick Start (5 Minutes)</h2>
+      <p>Follow these 3 simple steps to get the app running on your local machine:</p>
+
+      <div class="card">
+        <h3>Step 1: Install Dependencies</h3>
+        <p>Open your command line / terminal in the extracted folder and execute:</p>
+        <div class="code-container">
+          <div class="code-header">
+            <span>Terminal</span>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <pre>npm install</pre>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Step 2: Setup Environment File</h3>
+        <p>Duplicate <code>.env.example</code> into a new file called <code>.env</code>:</p>
+        <div class="code-container">
+          <div class="code-header">
+            <span>Terminal</span>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <pre>cp .env.example .env</pre>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Step 3: Launch Local Development Server</h3>
+        <div class="code-container">
+          <div class="code-header">
+            <span>Terminal</span>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <pre>npm run dev</pre>
+        </div>
+        <p style="margin-top: 10px;">Open your web browser and navigate to: <strong style="color: var(--primary);">http://localhost:3000</strong></p>
+      </div>
+    </section>
+
+    <!-- API Keys Setup -->
+    <section id="apikeys">
+      <h2 class="section-title">🔑 2. API Keys & Configuration Guide</h2>
+      <div class="alert alert-warning">
+        <span>⚠️</span>
+        <div><strong>Important:</strong> All sensitive keys are stored in your private <code>.env</code> file. Do not commit or share this file publicly!</div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Key Name</th>
+            <th>Required?</th>
+            <th>Service</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>VITE_SUPABASE_URL</code></td>
+            <td><strong style="color:#10b981;">Required</strong></td>
+            <td>Supabase</td>
+            <td>PostgreSQL cloud database and authentication URL</td>
+          </tr>
+          <tr>
+            <td><code>VITE_SUPABASE_ANON_KEY</code></td>
+            <td><strong style="color:#10b981;">Required</strong></td>
+            <td>Supabase</td>
+            <td>Public client authentication key</td>
+          </tr>
+          <tr>
+            <td><code>GEMINI_API_KEY</code></td>
+            <td>Optional</td>
+            <td>Google AI Studio</td>
+            <td>Powers AI Reel Assistant, video scripts & voice synthesis</td>
+          </tr>
+          <tr>
+            <td><code>VITE_ZEGOCLOUD_APP_ID</code></td>
+            <td>Optional</td>
+            <td>ZegoCloud</td>
+            <td>Enables WebRTC audio/video calling & live rooms</td>
+          </tr>
+          <tr>
+            <td><code>VITE_ZEGOCLOUD_APP_SIGN</code></td>
+            <td>Optional</td>
+            <td>ZegoCloud</td>
+            <td>ZegoCloud WebRTC verification signature</td>
+          </tr>
+          <tr>
+            <td><code>VITE_ONESIGNAL_APP_ID</code></td>
+            <td>Optional</td>
+            <td>OneSignal</td>
+            <td>Web & Mobile Push Notifications</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Supabase Setup -->
+    <section id="supabase">
+      <h2 class="section-title">🗄️ 3. Supabase Cloud Database Setup</h2>
+      <p>Supabase provides the free backend for real-time posts, user profiles, friend connections, chat rooms, and persistent avatars.</p>
+
+      <div class="card">
+        <h3>How to Configure Supabase in 2 Minutes:</h3>
+        <ol style="margin-left: 20px; color: #d1d5db; line-height: 1.8;">
+          <li>Visit <a href="https://supabase.com" target="_blank" style="color:var(--primary);">https://supabase.com</a> and sign up for free.</li>
+          <li>Click <strong>"New Project"</strong> and enter a project name.</li>
+          <li>Go to <strong>Settings ⚙️ -> API</strong> and copy your <strong>Project URL</strong> and <strong>anon public key</strong>.</li>
+          <li>Paste them into your <code>.env</code> file as <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code>.</li>
+          <li>Click <strong>"SQL Editor"</strong> in your Supabase dashboard -> <strong>"+ New Query"</strong>.</li>
+          <li>Open the file <code>Database/supabase-schema.sql</code>, copy all contents, paste into the query window and click <strong>"Run"</strong>!</li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- Key Features -->
+    <section id="features">
+      <h2 class="section-title">🌟 4. Features Overview</h2>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px;">
+        <div class="card">
+          <h3>🎥 Fullscreen Reels Feed</h3>
+          <p>Vertical swipe player, animated double-tap hearts, threaded comments, audio vinyl player, and bookmarks.</p>
+        </div>
+        <div class="card">
+          <h3>💬 Real-Time Messaging & Voice</h3>
+          <p>Instant 1-on-1 encrypted chat, microphone voice note recorder with wave playback, and photo sharing.</p>
+        </div>
+        <div class="card">
+          <h3>👥 QR Barcode & Friend Requests</h3>
+          <p>Dynamic QR code generator, live camera barcode scanner, and bi-directional friend requests with real-time sync.</p>
+        </div>
+        <div class="card">
+          <h3>💳 Multi-Currency Wallet</h3>
+          <p>Coins system with fiat conversion (PKR / USD), integrated for JazzCash, Easypaisa, PayPal, and Skrill.</p>
+        </div>
+        <div class="card">
+          <h3>📞 HD WebRTC Audio/Video Calls</h3>
+          <p>Real-time peer-to-peer calling with camera flip, mute, and speakerphone toggles.</p>
+        </div>
+        <div class="card">
+          <h3>🤖 Built-in AI Creator Assistant</h3>
+          <p>Integrated with Google Gemini AI to assist creators with viral reel captions and creative ideas.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Deployment -->
+    <section id="deployment">
+      <h2 class="section-title">🌐 5. Production Deployment</h2>
+      <p>You can deploy Pulse anywhere Node.js or static frontends are supported:</p>
+
+      <div class="card">
+        <h3>Deploying to Vercel / Netlify:</h3>
+        <p>1. Push your code to your private GitHub repository.<br>
+        2. In Vercel, import the repository.<br>
+        3. Add your environment variables from <code>.env</code> in the project settings.<br>
+        4. Click <strong>Deploy</strong>. Vercel will build and assign you a global HTTPS domain!</p>
+      </div>
+
+      <div class="card">
+        <h3>Building Locally:</h3>
+        <div class="code-container">
+          <div class="code-header">
+            <span>Terminal</span>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <pre>npm run build</pre>
+        </div>
+        <p>The compiled production files will be placed into the <code>/dist</code> folder, ready to be uploaded to any web server.</p>
+      </div>
+    </section>
+
+    <!-- PWA Install -->
+    <section id="pwa">
+      <h2 class="section-title">📱 6. Mobile PWA Installation</h2>
+      <p>Users can install Pulse on their smartphones without going through app stores:</p>
+      <div class="card">
+        <p><strong>On Android (Chrome / Brave / Edge):</strong><br>
+        Open the website -> Tap browser menu (3 dots) -> Tap <strong>"Install App"</strong> or <strong>"Add to Home screen"</strong>.</p>
+        <p style="margin-top: 12px;"><strong>On iOS (iPhone / iPad - Safari):</strong><br>
+        Open the website in Safari -> Tap the Share button (square with arrow) -> Tap <strong>"Add to Home Screen"</strong>.</p>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section id="faq">
+      <h2 class="section-title">❓ 7. FAQ & Troubleshooting</h2>
+      <div class="card">
+        <h3>Q: Where are the default credentials or demo login?</h3>
+        <p>Check the <code>DEMO-LOGIN.txt</code> file included in the root folder for sample accounts.</p>
+      </div>
+      <div class="card">
+        <h3>Q: Can I whitelabel and customize the logo and brand?</h3>
+        <p>Yes, 100%! All source code is completely unencrypted and editable. Change names in <code>index.html</code>, <code>metadata.json</code>, and replace icons in <code>public/icons/</code>.</p>
+      </div>
+    </section>
+
+    <footer style="margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 13px; text-align: center;">
+      Pulse Social Video & Live Streaming Platform &bull; Codester Commercial Release
+    </footer>
+  </main>
+
+  <script>
+    function copyCode(btn) {
+      const code = btn.closest('.code-container').querySelector('pre').innerText;
+      navigator.clipboard.writeText(code).then(() => {
+        const originalText = btn.innerText;
+        btn.innerText = 'Copied!';
+        btn.style.background = '#10b981';
+        setTimeout(() => {
+          btn.innerText = originalText;
+          btn.style.background = '';
+        }, 2000);
+      });
+    }
+  </script>
+</body>
+</html>

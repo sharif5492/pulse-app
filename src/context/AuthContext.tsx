@@ -19,6 +19,8 @@ interface AuthContextType {
   pulseCoins: number;
   authModalOpen: boolean;
   authMode: AuthMode;
+  isGuest: boolean;
+  continueAsGuest: () => void;
   openAuthModal: (mode?: AuthMode) => void;
   closeAuthModal: () => void;
   loginWithPassword: (email: string, pass: string) => Promise<{ success: boolean; error?: string }>;
@@ -77,6 +79,10 @@ function generateUniqueDeviceUser(): User {
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(() => {
     if (typeof window === 'undefined') return null;
+    const isAuthed = localStorage.getItem('pulse_auth_authenticated') === 'true';
+    if (!isAuthed) {
+      return null;
+    }
     const persistentAvatar = getPersistentAvatar();
     const saved = localStorage.getItem('pulse_current_user');
     if (saved) {
@@ -103,11 +109,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // fallback
       }
     }
-    const freshUser = generateUniqueDeviceUser();
-    if (persistentAvatar) {
-      freshUser.avatar = persistentAvatar;
-    }
-    return freshUser;
+    return null;
   });
 
   const [isLoading, setIsLoading] = useState(false);
@@ -303,6 +305,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (typeof window !== 'undefined') {
         localStorage.setItem('pulse_current_user', JSON.stringify(updatedUser));
+        localStorage.setItem('pulse_auth_authenticated', 'true');
         if (resolvedAvatar) {
           savePersistentAvatar(sessionUser.id, resolvedAvatar);
         }
@@ -421,6 +424,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(loggedUser);
       if (typeof window !== 'undefined') {
         localStorage.setItem('pulse_current_user', JSON.stringify(loggedUser));
+        localStorage.setItem('pulse_auth_authenticated', 'true');
+        localStorage.removeItem('pulse_is_guest');
         if (resolvedAvatar) {
           savePersistentAvatar(res.user.id, resolvedAvatar);
         }
@@ -454,6 +459,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(newUser);
       if (typeof window !== 'undefined') {
         localStorage.setItem('pulse_current_user', JSON.stringify(newUser));
+        localStorage.setItem('pulse_auth_authenticated', 'true');
+        localStorage.removeItem('pulse_is_guest');
       }
       profileService.updateProfile(res.user.id, newUser).catch(() => {});
       
@@ -492,6 +499,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(fallbackUser);
       if (typeof window !== 'undefined') {
         localStorage.setItem('pulse_current_user', JSON.stringify(fallbackUser));
+        localStorage.setItem('pulse_auth_authenticated', 'true');
+        localStorage.removeItem('pulse_is_guest');
       }
       closeAuthModal();
       return { success: true };
@@ -514,6 +523,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(demoUser);
       if (typeof window !== 'undefined') {
         localStorage.setItem('pulse_current_user', JSON.stringify(demoUser));
+        localStorage.setItem('pulse_auth_authenticated', 'true');
+        localStorage.removeItem('pulse_is_guest');
       }
       closeAuthModal();
       return { success: true };
@@ -521,9 +532,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { success: true };
   };
 
+  const isGuest = Boolean(user && (typeof window !== 'undefined' ? localStorage.getItem('pulse_is_guest') === 'true' : false));
+
+  const continueAsGuest = () => {
+    const guestUser = generateUniqueDeviceUser();
+    const persistentAvatar = getPersistentAvatar();
+    if (persistentAvatar) {
+      guestUser.avatar = persistentAvatar;
+    }
+    guestUser.name = 'Pulse Guest';
+    guestUser.bio = 'Exploring Pulse reels & live streams 🚀';
+    setUser(guestUser);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('pulse_current_user', JSON.stringify(guestUser));
+      localStorage.setItem('pulse_auth_authenticated', 'true');
+      localStorage.setItem('pulse_is_guest', 'true');
+    }
+    closeAuthModal();
+    audioUtils.playPop();
+  };
+
   const logout = async () => {
-    await authService.signOut();
+    try {
+      await authService.signOut();
+    } catch (e) {
+      console.warn('SignOut notice:', e);
+    }
     setUser(null);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('pulse_current_user');
+      localStorage.removeItem('pulse_auth_authenticated');
+      localStorage.removeItem('pulse_is_guest');
+    }
+    audioUtils.playPop();
   };
 
   const deductCoins = (amount: number): boolean => {
@@ -656,6 +697,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         user,
         isAuthenticated: !!user,
+        isGuest,
+        continueAsGuest,
         isLoading,
         isSupabaseConfigured,
         pulseCoins,

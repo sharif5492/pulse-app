@@ -572,32 +572,55 @@ export const uploadMediaToStorage = async (
   file: File | Blob,
   pathPrefix = 'posts'
 ): Promise<string | null> => {
-  if (!supabase) return null;
-  try {
-    const ext = (file as File).name?.split('.').pop() || 'mp4';
-    const fileName = `${pathPrefix}/${Date.now()}_${Math.random().toString(36).substring(2, 9)}.${ext}`;
+  // 1. Try Supabase storage if configured
+  if (supabase) {
+    try {
+      const ext = (file as File).name?.split('.').pop() || 'mp4';
+      const fileName = `${pathPrefix}/${Date.now()}_${Math.random().toString(36).substring(2, 9)}.${ext}`;
+      const contentType = (file as File).type || 'video/mp4';
 
-    const { data, error } = await supabase.storage
-      .from('media')
-      .upload(fileName, file, {
-        cacheControl: '3600',
-        upsert: true,
-      });
+      const { data, error } = await supabase.storage
+        .from('media')
+        .upload(fileName, file, {
+          cacheControl: '3600',
+          upsert: true,
+          contentType,
+        });
 
-    if (error) {
-      console.warn('Storage upload error to media bucket:', error);
-      return null;
+      if (!error && data?.path) {
+        const { data: publicUrlData } = supabase.storage
+          .from('media')
+          .getPublicUrl(data.path);
+        if (publicUrlData?.publicUrl) {
+          return publicUrlData.publicUrl;
+        }
+      }
+    } catch (err) {
+      console.warn('Supabase storage upload notice, falling back to server media storage:', err);
     }
-
-    const { data: publicUrlData } = supabase.storage
-      .from('media')
-      .getPublicUrl(data.path);
-
-    return publicUrlData.publicUrl;
-  } catch (err) {
-    console.warn('Storage upload exception:', err);
-    return null;
   }
+
+  // 2. Fallback: Upload raw binary to server without compression to preserve 100% audio fidelity
+  try {
+    const rawRes = await fetch('/api/media/upload-raw', {
+      method: 'POST',
+      headers: {
+        'Content-Type': (file as File).type || 'video/mp4',
+        'x-filename': (file as File).name || 'video.mp4',
+      },
+      body: file,
+    });
+    if (rawRes.ok) {
+      const result = await rawRes.json();
+      if (result.url) {
+        return result.url;
+      }
+    }
+  } catch (rawErr) {
+    console.warn('Backend media storage fallback notice:', rawErr);
+  }
+
+  return null;
 };
 
 /**

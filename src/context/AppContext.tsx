@@ -44,6 +44,8 @@ interface AppContextType {
   setActiveReelIndex: (index: number) => void;
   isMuted: boolean;
   toggleMute: () => void;
+  setIsMuted: React.Dispatch<React.SetStateAction<boolean>>;
+  unmuteAudio: () => void;
   toggleLikeReel: (reelId: string) => void;
   toggleBookmarkReel: (reelId: string) => void;
   savedPosts: Reel[];
@@ -226,7 +228,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [activeTab, setActiveTab] = useState<TabType>('home');
   const [reels, setReels] = useState<Reel[]>(MOCK_REELS);
   const [activeReelIndex, setActiveReelIndex] = useState(0);
-  const [isMuted, setIsMuted] = useState(true);
+  const [isMuted, setIsMuted] = useState(false); // NOT muted by default
   const [stories, setStories] = useState<Story[]>(MOCK_STORIES);
   const [activeStoryIndex, setActiveStoryIndex] = useState<number | null>(null);
   
@@ -311,6 +313,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const unreadDMsCount = conversations.reduce((acc, c) => acc + c.unreadCount, 0);
 
   const toggleMute = () => setIsMuted((prev) => !prev);
+  const unmuteAudio = () => setIsMuted(false);
   const toggleMobilePreviewFrame = () => setIsMobilePreviewFrame((prev) => !prev);
 
   // Helper to strictly deduplicate reels by unique ID
@@ -2070,6 +2073,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setReels((prev) => deduplicateReels([newReel, ...prev]));
     setActiveTab('reels');
     setActiveReelIndex(0);
+    setIsMuted(false); // Unmute immediately for newly uploaded reels!
     closeCreateModal();
 
     // Persist to Supabase 'posts' table
@@ -2476,6 +2480,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setActiveReelIndex,
         isMuted,
         toggleMute,
+        setIsMuted,
+        unmuteAudio,
         toggleLikeReel,
         toggleBookmarkReel,
         savedPosts,

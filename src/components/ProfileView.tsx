@@ -141,7 +141,7 @@ export const ProfileView: React.FC = () => {
     };
 
     return (
-      <div className="w-full max-w-xl mx-auto px-4 py-4 space-y-5 pb-24 text-slate-100 select-none animate-in fade-in">
+      <div className="w-full max-w-xl mx-auto px-4 py-4 space-y-5 pb-24 text-slate-100 animate-in fade-in">
         {/* Top navigation header */}
         <div className="flex items-center justify-between">
           <button
@@ -526,7 +526,7 @@ export const ProfileView: React.FC = () => {
   };
 
   return (
-    <div className="w-full max-w-xl mx-auto px-4 py-4 space-y-5 pb-24 text-slate-100 select-none">
+    <div className="w-full max-w-xl mx-auto px-4 py-4 space-y-5 pb-24 text-slate-100">
       {/* Native file input for photo gallery or camera avatar upload */}
       <input
         ref={directAvatarInputRef}

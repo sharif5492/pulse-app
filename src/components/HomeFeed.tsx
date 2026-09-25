@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { StoriesTray } from './StoriesTray';
 import { 
   Heart, MessageCircle, Share2, Bookmark, Radio, Play, 
-  Sparkles, TrendingUp, Users, Music, Flame, ArrowRight 
+  Sparkles, TrendingUp, Users, Music, Flame, ArrowRight,
+  Volume2, VolumeX 
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
@@ -16,12 +17,14 @@ export const HomeFeed: React.FC = () => {
     setActiveReelIndex, 
     toggleLikeReel, 
     toggleBookmarkReel,
-    openCreateModal
+    openCreateModal,
+    unmuteAudio
   } = useApp();
   const { user } = useAuth();
+  const [activeAudioReelId, setActiveAudioReelId] = useState<string | null>(null);
 
   return (
-    <div className="w-full max-w-xl mx-auto space-y-4 pb-24 select-none">
+    <div className="w-full max-w-xl mx-auto space-y-4 pb-28">
       {/* Stories Tray */}
       <StoriesTray />
 
@@ -133,25 +136,57 @@ export const HomeFeed: React.FC = () => {
                 </button>
               </div>
 
-              {/* Reel Video Thumbnail with Play Overlay */}
+              {/* Reel Video with Sound & Tap-to-Unmute controls */}
               <div
                 onClick={() => {
+                  unmuteAudio();
                   setActiveTab('reels');
                   setActiveReelIndex(idx);
                 }}
                 className="relative aspect-[4/5] sm:aspect-video w-full bg-slate-950 overflow-hidden cursor-pointer group"
               >
-                <img
-                  src={reel.thumbnailUrl}
-                  alt={reel.caption}
-                  className="w-full h-full object-cover group-hover:scale-102 transition-transform duration-300"
+                <video
+                  src={reel.videoUrl}
+                  poster={reel.thumbnailUrl}
+                  playsInline
+                  webkit-playsinline="true"
+                  loop
+                  autoPlay
+                  muted={activeAudioReelId !== reel.id}
+                  className="w-full h-full object-cover"
                 />
-                
-                <div className="absolute inset-0 bg-slate-950/20 group-hover:bg-slate-950/10 transition-colors flex items-center justify-center">
-                  <div className="w-14 h-14 rounded-full bg-slate-950/60 backdrop-blur-md flex items-center justify-center text-white border border-white/20 group-hover:scale-110 transition-transform">
-                    <Play className="w-6 h-6 fill-white ml-1" />
-                  </div>
-                </div>
+
+                {/* Tap to Unmute Speaker Button Overlay */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (activeAudioReelId === reel.id) {
+                      setActiveAudioReelId(null);
+                    } else {
+                      setActiveAudioReelId(reel.id);
+                      unmuteAudio();
+                    }
+                  }}
+                  className={`absolute top-3 right-3 z-10 flex items-center gap-1.5 px-2.5 py-1 rounded-full backdrop-blur-md border text-xs font-semibold shadow-lg transition-all hover:scale-105 active:scale-95 ${
+                    activeAudioReelId === reel.id
+                      ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-300'
+                      : 'bg-black/60 hover:bg-black/80 border-white/20 text-white'
+                  }`}
+                  title={activeAudioReelId === reel.id ? 'Mute audio' : 'Tap to unmute sound'}
+                >
+                  {activeAudioReelId === reel.id ? (
+                    <>
+                      <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
+                      <span className="text-[10px]">Sound ON</span>
+                    </>
+                  ) : (
+                    <>
+                      <VolumeX className="w-3.5 h-3.5 text-fuchsia-400" />
+                      <span className="text-[10px]">Unmute 🔊</span>
+                    </>
+                  )}
+                </button>
 
                 {/* View count pill */}
                 <div className="absolute bottom-3 left-3 bg-slate-950/70 backdrop-blur-md px-2.5 py-1 rounded-full text-[10px] text-white font-semibold border border-white/10 flex items-center gap-1">

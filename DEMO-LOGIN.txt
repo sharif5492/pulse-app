@@ -1,0 +1,48 @@
+=====================================================
+PULSE PWA - DEMO ACCOUNTS & QUICK ACCESS GUIDE
+=====================================================
+
+You can test all features of the application using the pre-configured demo profiles below, or create a brand new account using the Sign Up form.
+
+-----------------------------------------------------
+1. DEMO ACCOUNTS (QUICK LOGIN CREDENTIALS)
+-----------------------------------------------------
+
+ACCOUNT 1: ADMIN & CREATOR (Full Privileges)
+Email:    alex.rivera@pulse.live
+Password: Password123!
+Role:     Verified Creator & Admin
+Features: Live Streaming Host, Monetized Creator, HD Calls, Video Uploads
+
+ACCOUNT 2: ACTIVE CREATOR
+Email:    sophia.chen@pulse.live
+Password: Password123!
+Role:     Verified Creator
+Features: Upload Short Videos/Reels, Live Co-Host, Audio Calls, Stories
+
+ACCOUNT 3: STANDARD USER / VIEWER
+Email:    demo.user@pulse.live
+Password: Password123!
+Role:     Standard Viewer
+Features: Direct Messages, Watch Reels, Send Virtual Gifts, Wallet Balance
+
+-----------------------------------------------------
+2. GUEST / INSTANT DEMO MODE
+-----------------------------------------------------
+- If you launch the app without entering credentials, a guest profile is automatically initialized with pre-loaded mock coins, saved reels, and simulated interactions so you can explore immediately without requiring an initial sign-in.
+
+-----------------------------------------------------
+3. TEST WALLET & RECHARGE GATEWAYS
+-----------------------------------------------------
+- Test Coin Balance: Pre-loaded with 1,250 Pulse Coins
+- Simulated Payment Methods Available in Wallet:
+  * JazzCash (Mobile Wallet Simulation)
+  * EasyPaisa (Mobile Wallet Simulation)
+  * PayPal & Stripe (Sandbox Ready)
+
+-----------------------------------------------------
+4. LIVE STREAMING & CALLING TEST
+-----------------------------------------------------
+- To test live calling and WebRTC streams, open the application in two separate browser tabs or simultaneously across a mobile device and a desktop browser.
+- Tap the Call button in Direct Messages or launch a Live Broadcast from the Create tab.
+=====================================================

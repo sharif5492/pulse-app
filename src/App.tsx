@@ -28,9 +28,9 @@ import { CoinRewardBanner } from './components/CoinRewardBanner';
 import { PaymentWalletModal } from './components/PaymentWalletModal';
 
 const MainAppContent: React.FC = () => {
-  const {
-    activeTab,
-    setActiveTab,
+  const { 
+    activeTab, 
+    setActiveTab, 
     isMobilePreviewFrame,
     activeCall,
     incomingCall,
@@ -52,45 +52,68 @@ const MainAppContent: React.FC = () => {
     activeConversation,
   } = useApp();
   const { isAuthenticated, user } = useAuth();
-  const [showSplash, setShowSplash] = useState(true);
+  const [showSplash, setShowSplash] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return !sessionStorage.getItem('pulse_splash_seen');
+    }
+    return true;
+  });
 
   const isChatRoomOpen = Boolean(activeConversation) && (activeTab === 'dms' || activeTab === 'messages');
 
   const handleSplashComplete = () => {
     setShowSplash(false);
+    try {
+      sessionStorage.setItem('pulse_splash_seen', 'true');
+    } catch {}
   };
 
   const renderActiveView = () => {
     switch (activeTab) {
-      case 'home': return <HomeFeed />;
-      case 'reels': return <ReelsFeed />;
-      case 'live': return <LiveRoomsView />;
+      case 'home':
+        return <HomeFeed />;
+      case 'reels':
+        return <ReelsFeed />;
+      case 'live':
+        return <LiveRoomsView />;
       case 'dms':
-      case 'messages': return <DirectMessagesView />;
-      case 'notifications': return <NotificationsView />;
-      case 'profile': return <ProfileView />;
-      case 'camera': return <CameraView />;
-      case 'settings': return <SettingsView onReplaySplash={() => setShowSplash(true)} />;
-      case 'auth': return <AuthView />;
-      case 'ai_chat': return <AIChatAssistant onBack={() => setActiveTab('dms')} />;
-      default: return <HomeFeed />;
+      case 'messages':
+        return <DirectMessagesView />;
+      case 'notifications':
+        return <NotificationsView />;
+      case 'profile':
+        return <ProfileView />;
+      case 'camera':
+        return <CameraView />;
+      case 'settings':
+        return <SettingsView onReplaySplash={() => setShowSplash(true)} />;
+      case 'auth':
+        return <AuthView />;
+      case 'ai_chat':
+        return <AIChatAssistant onBack={() => setActiveTab('dms')} />;
+      default:
+        return <HomeFeed />;
     }
   };
 
   return (
-    <div className="min-h-screen h-[100dvh] w-full bg-slate-950 text-slate-100 flex flex-col relative selection:bg-fuchsia-500 selection:text-white overflow-hidden">
+    <div className={`min-h-screen h-auto w-full bg-slate-950 text-slate-100 flex flex-col items-center justify-start relative overflow-y-auto selection:bg-fuchsia-500 selection:text-white ${isMobilePreviewFrame ? 'p-2 sm:p-6 bg-slate-950' : ''}`}>
+      {/* 5-Second Glowing Pulse Heart Splash Screen */}
       {showSplash && <SplashScreen onComplete={handleSplashComplete} />}
 
+      {/* Background ambient lighting effects for Vibrant Palette */}
       <div className="fixed top-[-10%] left-[-10%] w-[500px] h-[500px] bg-fuchsia-600/10 rounded-full blur-[140px] pointer-events-none -z-10" />
       <div className="fixed bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-indigo-600/10 rounded-full blur-[140px] pointer-events-none -z-10" />
 
-      {/* --- YAHAN FIX KIYA HAI - AB FULL SCREEN MOBILE APP --- */}
-      <div className={`w-full h-full flex flex-col bg-slate-950 overflow-hidden relative ${
-          isMobilePreviewFrame
-           ? 'max-w-[430px] h-[92vh] max-h-[890px] rounded-[44px] border-[5px] border-slate-800 shadow-2xl mx-auto my-auto'
-            : 'max-w-full'
-        }`}>
-
+      {/* Mobile Device Shell */}
+      <div 
+        className={`w-full ${
+          isMobilePreviewFrame 
+            ? 'max-w-[430px] min-h-[92vh] max-h-[890px] rounded-[44px] border-[5px] border-slate-800 shadow-2xl shadow-fuchsia-950/20 overflow-y-auto relative flex flex-col bg-slate-950 ring-1 ring-white/10' 
+            : 'max-w-2xl w-full min-h-screen h-auto relative flex flex-col bg-slate-950 shadow-2xl border-x border-slate-900/60 overflow-y-auto'
+        }`}
+      >
+        {/* Dynamic Island Pill for Mockup Frame */}
         {isMobilePreviewFrame && (
           <div className="absolute top-2.5 left-1/2 -translate-x-1/2 w-28 h-4.5 bg-black rounded-full z-40 flex items-center justify-between px-3 border border-white/5 shadow-inner">
             <span className="w-2.5 h-2.5 rounded-full bg-slate-900" />
@@ -98,42 +121,80 @@ const MainAppContent: React.FC = () => {
           </div>
         )}
 
+        {/* Global Toast Notification */}
         <NotificationToast />
-        {!isChatRoomOpen && <Header />}
-        <main className={`flex-1 ${isChatRoomOpen? 'h-full overflow-hidden flex flex-col' : 'overflow-y-auto overscroll-contain'} relative no-scrollbar`}>
-          {renderActiveView()}
-        </main>
-        {!isChatRoomOpen && activeTab!== 'camera' && <BottomNav />}
 
-        <StoryViewer />
-        <ActiveLiveRoom />
-        <CreatePostModal />
-        <AuthModal />
+        {!isAuthenticated ? (
+          /* DIRECT LOGIN & SIGN UP GATE: Shows first when opening the PWA/app until authenticated */
+          <main className="flex-1 w-full min-h-[85vh] relative flex flex-col justify-center">
+            <AuthView />
+          </main>
+        ) : (
+          <>
+            {/* Top Header (hidden during active 1-on-1 chat room for immersive full-screen messaging) */}
+            {!isChatRoomOpen && <Header />}
 
-        {activeCall && (
-          <CallOverlay
-            session={activeCall}
-            onEndCall={endCall}
-            onToggleMute={toggleCallMute}
-            onToggleVideo={toggleCallVideo}
-            onFlipCamera={flipCallCamera}
-            onToggleSpeaker={toggleSpeaker}
-            onSetVoiceEffect={setCallVoiceEffect}
-          />
+            {/* Main Body View */}
+            <main className={`flex-1 w-full ${isChatRoomOpen ? 'h-full min-h-[550px] flex flex-col overflow-hidden' : 'min-h-full h-auto overflow-y-visible'} relative no-scrollbar`}>
+              {renderActiveView()}
+            </main>
+
+            {/* Bottom Navigation Dock (hidden during chat room and camera view for immersive full-screen experience) */}
+            {!isChatRoomOpen && activeTab !== 'camera' && <BottomNav />}
+
+            {/* Full-screen Overlays */}
+            <StoryViewer />
+            <ActiveLiveRoom />
+            <CreatePostModal />
+            <AuthModal />
+
+            {/* Real-time WebRTC Calling Overlays */}
+            {activeCall && (
+              <CallOverlay 
+                session={activeCall}
+                onEndCall={endCall}
+                onToggleMute={toggleCallMute}
+                onToggleVideo={toggleCallVideo}
+                onFlipCamera={flipCallCamera}
+                onToggleSpeaker={toggleSpeaker}
+                onSetVoiceEffect={setCallVoiceEffect}
+              />
+            )}
+
+            {incomingCall && (
+              <IncomingCallDialog 
+                session={incomingCall}
+                onAccept={acceptCall}
+                onReject={rejectCall}
+              />
+            )}
+
+            {/* Dynamic PWA Add to Home Screen Banner */}
+            <PWAInstallBanner />
+
+            {/* Global User Search & Friend Requests Modal */}
+            <UserSearchModal 
+              isOpen={isUserSearchOpen} 
+              onClose={closeUserSearchModal} 
+            />
+
+            {/* Floating Top Coin Reward Banner */}
+            <CoinRewardBanner />
+
+            {/* Global Fake Coins & Rewards Wallet Hub Modal */}
+            <CoinsRewardModal 
+              isOpen={isCoinsRewardModalOpen} 
+              onClose={closeCoinsRewardModal} 
+            />
+
+            {/* Global Payment & Payouts Wallet Modal (JazzCash, Easypaisa, PayPal, Skrill) */}
+            <PaymentWalletModal
+              isOpen={isPaymentWalletOpen}
+              onClose={closePaymentWallet}
+              initialTab={walletInitialTab}
+            />
+          </>
         )}
-        {incomingCall && (
-          <IncomingCallDialog
-            session={incomingCall}
-            onAccept={acceptCall}
-            onReject={rejectCall}
-          />
-        )}
-
-        <PWAInstallBanner />
-        <UserSearchModal isOpen={isUserSearchOpen} onClose={closeUserSearchModal} />
-        <CoinRewardBanner />
-        <CoinsRewardModal isOpen={isCoinsRewardModalOpen} onClose={closeCoinsRewardModal} />
-        <PaymentWalletModal isOpen={isPaymentWalletOpen} onClose={closePaymentWallet} initialTab={walletInitialTab} />
       </div>
     </div>
   );

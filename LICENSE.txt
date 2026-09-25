@@ -1,0 +1,24 @@
+COMMERCIAL SINGLE-DOMAIN LICENSE AGREEMENT
+
+Product: Pulse - PWA Social Video, Live Streaming & Calling Platform
+Copyright (c) 2026. All rights reserved.
+
+IMPORTANT: PLEASE READ THIS LICENSE AGREEMENT CAREFULLY BEFORE USING, INSTALLING, OR DEPLOYING THIS SOFTWARE.
+
+1. GRANT OF LICENSE
+Subject to the terms and conditions of this Agreement, the Licensor grants the Licensee a non-exclusive, non-transferable, revocable commercial license to:
+- Install, deploy, and execute the Software on ONE (1) primary production domain (and associated staging/test subdomains for development).
+- Modify, rebrand, and adapt the front-end design, theme, logos, and features for the single licensed domain.
+
+2. RESTRICTIONS
+Licensee shall NOT:
+- Resell, redistribute, sublicense, lease, rent, or publicly share the source code, whether modified or unmodified.
+- Distribute the source code in any digital asset marketplace, public repository, or forum.
+- Use the single purchase license across multiple distinct commercial domains or client projects without purchasing additional licenses.
+- Remove this license agreement or proprietary copyright notices from the codebase.
+
+3. DISCLAIMER OF WARRANTY
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+4. TERMINATION
+Any breach of the terms of this Agreement terminates the license immediately and automatically. Upon termination, Licensee must cease all use of the Software and destroy all copies of the source code.

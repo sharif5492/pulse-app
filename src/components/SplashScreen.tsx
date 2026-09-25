@@ -21,9 +21,14 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
       onComplete();
     }, 1150);
 
+    const safetyTimer = setTimeout(() => {
+      onComplete();
+    }, 1500);
+
     return () => {
       clearTimeout(fadeTimer);
       clearTimeout(completeTimer);
+      clearTimeout(safetyTimer);
     };
   }, [onComplete]);
 

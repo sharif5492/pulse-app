@@ -1,21 +1,79 @@
 {
+  "id": "/?source=pwa",
   "name": "Pulse - Mobile Social Media",
   "short_name": "Pulse",
-  "start_url": "/",
+  "description": "Mobile-first social media app for reels, stories, live rooms, and DMs.",
+  "start_url": "/?source=pwa",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#09090b",
-  "theme_color": "#09090b",
+  "display_override": ["standalone", "minimal-ui", "window-controls-overlay"],
+  "orientation": "portrait-primary",
+  "background_color": "#020617",
+  "theme_color": "#020617",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["social", "entertainment", "photo", "video"],
   "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
     {
       "src": "/icon-192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
       "src": "/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
-  ]
+  ],
+  "shortcuts": [
+    {
+      "name": "Explore Reels",
+      "short_name": "Reels",
+      "description": "Watch trending full-screen video reels",
+      "url": "/?tab=reels",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Direct Messages",
+      "short_name": "Chats",
+      "description": "Chat with friends and AI creator bots",
+      "url": "/?tab=dms",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Camera & Filters",
+      "short_name": "Camera",
+      "description": "Snap photos and record video stories",
+      "url": "/?tab=camera",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Live Rooms",
+      "short_name": "Live",
+      "description": "Join live audio and video streaming rooms",
+      "url": "/?tab=live",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    }
+  ],
+  "prefer_related_applications": false
 }
