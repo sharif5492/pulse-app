@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { 
-  PhoneOff, Mic, MicOff, Video, VideoOff, 
+  Phone, PhoneOff, Mic, MicOff, Video, VideoOff, 
   RotateCcw, Volume2, VolumeX, Maximize2, Minimize2, 
-  Sparkles, ShieldCheck, Wifi, Radio, Wand2, 
-  Check, Headphones, Sliders, X, Zap, MessageCircle
+  Sparkles, Wand2, Check, X, MessageCircle, 
+  MoreHorizontal, UserPlus, User
 } from 'lucide-react';
 import { ActiveCallSession, VoiceEffect } from '../types';
 import { audioUtils } from '../lib/audioUtils';
@@ -34,23 +34,19 @@ export const CallOverlay: React.FC<CallOverlayProps> = ({
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const [isMinimized, setIsMinimized] = useState(false);
   const [isPipSwapped, setIsPipSwapped] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showVoiceMenu, setShowVoiceMenu] = useState(false);
-  const [isMonitoring, setIsMonitoring] = useState(false);
-  const [audioMeterLevel, setAudioMeterLevel] = useState(0);
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [feedbackToast, setFeedbackToast] = useState<string | null>(null);
 
   const activeEffect: VoiceEffect = session.voiceEffect || 'original';
 
-  // Monitor live microphone activity for the DSP visualizer
-  useEffect(() => {
-    let animId: number;
-    const updateLevel = () => {
-      const level = voiceChanger.getAudioLevel();
-      setAudioMeterLevel(level);
-      animId = requestAnimationFrame(updateLevel);
-    };
-    animId = requestAnimationFrame(updateLevel);
-    return () => cancelAnimationFrame(animId);
-  }, []);
+  const showFeedback = (msg: string) => {
+    setFeedbackToast(msg);
+    setTimeout(() => {
+      setFeedbackToast((prev) => (prev === msg ? null : prev));
+    }, 2400);
+  };
 
   // Handle Voice Switch
   const handleSelectVoice = (effect: VoiceEffect) => {
@@ -61,6 +57,7 @@ export const CallOverlay: React.FC<CallOverlayProps> = ({
       voiceChanger.applyEffectParameters(effect);
       audioUtils.playVoiceEffectSwitched(effect);
     }
+    showFeedback(`Voice set to: ${VOICE_PRESETS[effect].name}`);
   };
 
   // Format call duration into MM:SS
@@ -68,6 +65,52 @@ export const CallOverlay: React.FC<CallOverlayProps> = ({
     const mins = Math.floor(sec / 60);
     const remainingSecs = sec % 60;
     return `${mins < 10 ? '0' : ''}${mins}:${remainingSecs < 10 ? '0' : ''}${remainingSecs}`;
+  };
+
+  // Handle Share button click (screen share or invite link)
+  const handleShareClick = async () => {
+    audioUtils.playPop();
+
+    // Try screen sharing if supported and in video call
+    if (session.callType === 'video' && navigator.mediaDevices && 'getDisplayMedia' in navigator.mediaDevices) {
+      try {
+        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        setIsScreenSharing(true);
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = stream;
+        }
+        stream.getVideoTracks()[0].onended = () => {
+          setIsScreenSharing(false);
+          if (localVideoRef.current && session.localStream) {
+            localVideoRef.current.srcObject = session.localStream;
+          }
+        };
+        showFeedback('Screen sharing active');
+        return;
+      } catch (err) {
+        // Fallback to share link
+      }
+    }
+
+    const callUrl = `${window.location.origin}/#call=${session.id}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `Pulse Call with ${session.participant.name}`,
+          text: `Join active call with ${session.participant.name}`,
+          url: callUrl,
+        });
+        showFeedback('Call shared');
+        return;
+      } catch {}
+    }
+
+    try {
+      await navigator.clipboard.writeText(callUrl);
+      showFeedback('Call link copied to clipboard');
+    } catch {
+      showFeedback(`Call with ${session.participant.name}`);
+    }
   };
 
   // Bind streams to video elements
@@ -87,7 +130,7 @@ export const CallOverlay: React.FC<CallOverlayProps> = ({
   if (isMinimized) {
     return (
       <div className="fixed bottom-20 right-4 z-50 animate-in slide-in-from-bottom duration-300">
-        <div className="bg-slate-900/95 backdrop-blur-xl border border-fuchsia-500/50 rounded-2xl p-3 shadow-2xl shadow-fuchsia-950/50 flex items-center gap-3 w-72">
+        <div className="bg-[#111b21]/95 backdrop-blur-xl border border-slate-700/80 rounded-2xl p-3 shadow-2xl flex items-center gap-3 w-72">
           <div className="relative shrink-0">
             <img
               src={session.participant.avatar}
@@ -99,7 +142,7 @@ export const CallOverlay: React.FC<CallOverlayProps> = ({
 
           <div className="flex-1 min-w-0">
             <h4 className="text-xs font-bold text-white truncate">{session.participant.name}</h4>
-            <p className="text-[10px] text-fuchsia-400 font-semibold flex items-center gap-1.5">
+            <p className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1.5">
               <span>{session.status === 'connected' ? formatDuration(session.durationSeconds) : 'Connecting...'}</span>
               {activeEffect !== 'original' && (
                 <span className="px-1.5 py-0.2 rounded bg-fuchsia-500/20 text-fuchsia-300 text-[9px] font-bold">
@@ -115,7 +158,7 @@ export const CallOverlay: React.FC<CallOverlayProps> = ({
                 audioUtils.playPop();
                 startChatWithUser(session.participant);
               }}
-              className="p-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-950/40"
+              className="p-1.5 rounded-lg bg-[#202c33] hover:bg-[#2a3942] text-white"
               title="Chat with Caller"
             >
               <MessageCircle className="w-3.5 h-3.5" />
@@ -125,7 +168,7 @@ export const CallOverlay: React.FC<CallOverlayProps> = ({
                 audioUtils.playPop();
                 setIsMinimized(false);
               }}
-              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white"
+              className="p-1.5 rounded-lg bg-[#202c33] hover:bg-[#2a3942] text-white"
               title="Expand Call"
             >
               <Maximize2 className="w-3.5 h-3.5" />
@@ -135,10 +178,10 @@ export const CallOverlay: React.FC<CallOverlayProps> = ({
                 audioUtils.playPop();
                 onEndCall();
               }}
-              className="p-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white shadow-md shadow-rose-900/40"
+              className="p-1.5 rounded-lg bg-[#ea0038] hover:bg-[#d00030] text-white"
               title="End Call"
             >
-              <PhoneOff className="w-3.5 h-3.5" />
+              <Phone className="w-3.5 h-3.5 rotate-[135deg]" />
             </button>
           </div>
         </div>
@@ -149,78 +192,80 @@ export const CallOverlay: React.FC<CallOverlayProps> = ({
   const isVideo = session.callType === 'video';
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-slate-950 text-slate-100 select-none overflow-hidden animate-in fade-in zoom-in-95 duration-300">
-      {/* Background Ambient Glows */}
-      <div className="absolute inset-0 bg-gradient-to-b from-slate-950 via-slate-900/90 to-slate-950 pointer-events-none" />
-      <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-fuchsia-600/15 rounded-full blur-3xl pointer-events-none animate-pulse" />
-      <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-indigo-600/15 rounded-full blur-3xl pointer-events-none" />
-
-      {/* Top Header Bar */}
-      <div className="relative z-20 w-full max-w-2xl mx-auto px-4 pt-4 pb-2 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-900/80 border border-slate-800 backdrop-blur-md">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="text-[10px] font-bold text-slate-300 tracking-wider">
-              END-TO-END ENCRYPTED WebRTC
-            </span>
-          </div>
-          <div className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-900/80 border border-slate-800 text-[10px] text-emerald-400 font-semibold">
-            <Wifi className="w-3 h-3" />
-            <span>HD Audio/Video</span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {/* Active Voice FX Quick Badge Pill */}
-          <button
-            onClick={() => {
-              audioUtils.playPop();
-              setShowVoiceMenu(true);
-            }}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-bold transition-all shadow-md backdrop-blur-md ${
-              activeEffect === 'girl'
-                ? 'bg-rose-500/20 border-rose-500/60 text-rose-300 hover:bg-rose-500/30'
-                : activeEffect === 'boy'
-                ? 'bg-indigo-500/20 border-indigo-500/60 text-indigo-300 hover:bg-indigo-500/30'
-                : 'bg-slate-900/80 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
-            }`}
-            title="Open Voice Changer"
-          >
-            <Wand2 className="w-3.5 h-3.5 text-fuchsia-400 animate-pulse" />
-            <span>{VOICE_PRESETS[activeEffect].shortName}</span>
-          </button>
-
-          <button
-            onClick={() => {
-              audioUtils.playPop();
-              setIsMinimized(true);
-              startChatWithUser(session.participant);
-            }}
-            className="px-3 py-1 rounded-full bg-slate-900/80 hover:bg-indigo-600/30 text-indigo-300 hover:text-white border border-indigo-500/40 transition-all flex items-center gap-1.5 text-xs font-semibold backdrop-blur-md"
-            title="Open Chat with Caller"
-          >
-            <MessageCircle className="w-3.5 h-3.5 text-indigo-400" />
-            <span>Chat</span>
-          </button>
-
-          <button
-            onClick={() => {
-              audioUtils.playPop();
-              setIsMinimized(true);
-            }}
-            className="p-2 rounded-full bg-slate-900/80 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 transition-colors"
-            title="Minimize Call Window"
-          >
-            <Minimize2 className="w-4 h-4" />
-          </button>
-        </div>
+    <div className="fixed inset-0 z-50 flex flex-col justify-between bg-[#0b141a] text-slate-100 select-none overflow-hidden animate-in fade-in duration-300">
+      {/* WhatsApp style doodle background wallpaper */}
+      <div className="absolute inset-0 bg-[#0b141a] z-0 overflow-hidden pointer-events-none">
+        <svg className="w-full h-full opacity-[0.05] text-slate-100" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <pattern id="whatsapp-doodle-bg" width="120" height="120" patternUnits="userSpaceOnUse">
+              <path d="M20 20a5 5 0 0 1 5 5v10a5 5 0 0 1-5 5h-5l-4 4v-4h-1a5 5 0 0 1-5-5V25a5 5 0 0 1 5-5h10zm40 10a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm25 25l6 6-6 6-6-6 6-6zm-50 35c5 0 8 4 8 8s-3 8-8 8-8-4-8-8 3-8 8-8zm55-15h12v12H90V75zm-70-5h8l4 6-4 6h-8l-4-6 4-6z" fill="currentColor"/>
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#whatsapp-doodle-bg)" />
+        </svg>
       </div>
 
-      {/* Main Calling Stage */}
-      <div className="relative z-10 flex-1 w-full max-w-2xl mx-auto flex flex-col items-center justify-center p-4">
+      {/* Toast Feedback */}
+      {feedbackToast && (
+        <div className="absolute top-20 inset-x-0 z-40 flex justify-center pointer-events-none px-4">
+          <div className="bg-[#1c272e]/95 text-white text-xs font-semibold px-4 py-2 rounded-full shadow-lg border border-slate-700/80 animate-in fade-in slide-in-from-top-2">
+            {feedbackToast}
+          </div>
+        </div>
+      )}
+
+      {/* Top Header Bar matching Screenshot */}
+      <div className="relative z-30 w-full max-w-md mx-auto px-4 pt-6 pb-2 flex items-center justify-between">
+        {/* Left: Minimize button (inward diagonal arrows) */}
+        <button
+          onClick={() => {
+            audioUtils.playPop();
+            setIsMinimized(true);
+          }}
+          className="w-11 h-11 rounded-full bg-[#1c272e] hover:bg-[#25323a] text-white flex items-center justify-center transition-all active:scale-95 shadow-md border border-white/5"
+          title="Minimize Call"
+        >
+          <Minimize2 className="w-5 h-5 text-white" />
+        </button>
+
+        {/* Center: Contact Name / Phone & Status */}
+        <div className="text-center min-w-0 flex-1 px-3">
+          <h2 className="text-base sm:text-lg font-semibold text-white truncate tracking-wide">
+            {session.participant.phone || session.participant.name}
+          </h2>
+          <p className="text-xs text-slate-400 mt-0.5 font-normal">
+            {session.status === 'connected' ? (
+              <span className="text-emerald-400 font-medium flex items-center justify-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                {formatDuration(session.durationSeconds)}
+              </span>
+            ) : session.isCaller ? (
+              'Calling'
+            ) : (
+              'Connecting...'
+            )}
+          </p>
+        </div>
+
+        {/* Right: Add Participant / Open Chat */}
+        <button
+          onClick={() => {
+            audioUtils.playPop();
+            setIsMinimized(true);
+            startChatWithUser(session.participant);
+          }}
+          className="w-11 h-11 rounded-full bg-[#1c272e] hover:bg-[#25323a] text-white flex items-center justify-center transition-all active:scale-95 shadow-md border border-white/5"
+          title="Chat / Add Participant"
+        >
+          <UserPlus className="w-5 h-5 text-white" />
+        </button>
+      </div>
+
+      {/* Main Center Stage */}
+      <div className="relative z-10 flex-1 w-full max-w-md mx-auto flex flex-col items-center justify-center p-4">
         {isVideo ? (
-          /* Video Call View: Full Remote + PiP Local Stream */
-          <div className="relative w-full h-full max-h-[620px] rounded-3xl overflow-hidden bg-slate-900 border border-slate-800 shadow-2xl flex items-center justify-center">
+          /* Video Call View: Remote Stream with PiP Local Stream */
+          <div className="relative w-full h-full max-h-[560px] rounded-3xl overflow-hidden bg-slate-900 border border-slate-800 shadow-2xl flex items-center justify-center">
             {/* Primary Remote Video */}
             <video
               ref={remoteVideoRef}
@@ -234,18 +279,21 @@ export const CallOverlay: React.FC<CallOverlayProps> = ({
             {/* Remote Fallback / Overlay if waiting to connect or remote video is off */}
             {session.status !== 'connected' && (
               <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/75 backdrop-blur-sm space-y-4 p-6 text-center">
-                <div className="relative">
-                  <img
-                    src={session.participant.avatar}
-                    alt={session.participant.name}
-                    className="w-24 h-24 rounded-full object-cover border-2 border-fuchsia-500 shadow-xl shadow-fuchsia-500/20"
-                  />
-                  <div className="absolute inset-0 rounded-full border-2 border-fuchsia-400 animate-ping opacity-30" />
+                <div className="w-28 h-28 rounded-full bg-[#1c272e] flex items-center justify-center shadow-xl border border-white/10">
+                  {session.participant.avatar ? (
+                    <img
+                      src={session.participant.avatar}
+                      alt={session.participant.name}
+                      className="w-full h-full rounded-full object-cover"
+                    />
+                  ) : (
+                    <User className="w-16 h-16 text-slate-400" />
+                  )}
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-white">{session.participant.name}</h3>
-                  <p className="text-xs text-fuchsia-400 font-semibold animate-pulse mt-1">
-                    {session.isCaller ? 'Ringing Remote Peer...' : 'Connecting Media Streams...'}
+                  <h3 className="text-base font-bold text-white">{session.participant.name}</h3>
+                  <p className="text-xs text-emerald-400 font-medium animate-pulse mt-1">
+                    {session.isCaller ? 'Calling...' : 'Connecting Media Streams...'}
                   </p>
                 </div>
               </div>
@@ -254,7 +302,7 @@ export const CallOverlay: React.FC<CallOverlayProps> = ({
             {/* Floating Picture-in-Picture Local Video Box */}
             <div
               onClick={() => setIsPipSwapped(!isPipSwapped)}
-              className="absolute top-4 right-4 w-28 sm:w-36 aspect-[9/16] sm:aspect-[3/4] rounded-2xl overflow-hidden bg-slate-950 border-2 border-fuchsia-500/80 shadow-2xl z-20 cursor-pointer group hover:scale-105 transition-transform"
+              className="absolute top-4 right-4 w-28 sm:w-32 aspect-[9/16] rounded-2xl overflow-hidden bg-slate-950 border-2 border-white/20 shadow-2xl z-20 cursor-pointer group hover:scale-105 transition-transform"
               title="Click to toggle PIP"
             >
               {session.isVideoOff ? (
@@ -271,384 +319,293 @@ export const CallOverlay: React.FC<CallOverlayProps> = ({
                   className="w-full h-full object-cover -scale-x-100"
                 />
               )}
-              <div className="absolute bottom-1 left-1 bg-slate-950/80 px-1.5 py-0.5 rounded text-[8px] font-bold text-white uppercase tracking-wider backdrop-blur-sm flex items-center gap-1">
-                <span>You</span>
-                {activeEffect !== 'original' && (
-                  <span className="text-fuchsia-400 font-bold">• {VOICE_PRESETS[activeEffect].shortName}</span>
-                )}
-              </div>
-            </div>
-
-            {/* Remote Participant Tag Overlay */}
-            <div className="absolute bottom-4 left-4 z-20 flex items-center gap-2 bg-slate-950/80 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 shadow-lg">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-xs font-bold text-white">{session.participant.name}</span>
-              {session.participant.verified && (
-                <span className="text-[10px] text-fuchsia-400 font-bold">✓</span>
-              )}
             </div>
           </div>
         ) : (
-          /* Audio Call View: Modern High-End Voice UI */
-          <div className="flex flex-col items-center justify-center space-y-6 text-center max-w-sm">
-            {/* Animated Pulsing Ring & Avatar */}
-            <div className="relative">
-              <div className="w-40 h-40 rounded-full bg-gradient-to-tr from-fuchsia-600 to-indigo-600 p-1 shadow-2xl shadow-fuchsia-500/25">
+          /* Audio Call View: Matching Screenshot with Huge Circular Avatar */
+          <div className="flex flex-col items-center justify-center my-auto">
+            <div className="w-52 h-52 sm:w-64 sm:h-64 rounded-full bg-[#1c272e] flex items-center justify-center shadow-2xl relative overflow-hidden border border-white/5">
+              {session.participant.avatar ? (
                 <img
                   src={session.participant.avatar}
                   alt={session.participant.name}
-                  className="w-full h-full rounded-full object-cover border-4 border-slate-950"
+                  className="w-full h-full rounded-full object-cover"
                 />
-              </div>
-
-              {/* Pulsing Aura */}
-              {session.status === 'connected' ? (
-                <div className="absolute -inset-3 rounded-full border-2 border-fuchsia-500/50 animate-ping opacity-40 pointer-events-none" />
               ) : (
-                <div className="absolute -inset-4 rounded-full border border-indigo-400/40 animate-pulse pointer-events-none" />
+                <User className="w-28 h-28 text-slate-400" />
               )}
-
-              {/* Verified Badge */}
-              {session.participant.verified && (
-                <div className="absolute bottom-1 right-2 bg-fuchsia-600 text-white rounded-full p-1 border-2 border-slate-950 shadow-md">
-                  <Sparkles className="w-3.5 h-3.5" />
-                </div>
+              {session.status === 'connected' && (
+                <div className="absolute inset-0 rounded-full border border-emerald-500/20 animate-pulse pointer-events-none" />
               )}
             </div>
-
-            {/* User Details & Active State */}
-            <div className="space-y-1">
-              <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-                {session.participant.name}
-              </h2>
-              <p className="text-xs text-slate-400 font-medium">@{session.participant.username}</p>
-
-              <div className="pt-2 flex items-center justify-center gap-2">
-                {session.status === 'connected' ? (
-                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-bold shadow-inner">
-                    <Radio className="w-3.5 h-3.5 animate-pulse" />
-                    <span>{formatDuration(session.durationSeconds)}</span>
-                  </div>
-                ) : (
-                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-fuchsia-500/15 border border-fuchsia-500/30 text-fuchsia-400 text-xs font-semibold animate-pulse">
-                    <span>{session.isCaller ? 'Calling...' : 'Connecting Audio Room...'}</span>
-                  </div>
-                )}
-
-                {/* Voice FX Status Pill in Audio View */}
-                <button
-                  onClick={() => {
-                    audioUtils.playPop();
-                    setShowVoiceMenu(true);
-                  }}
-                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold border transition-colors ${
-                    activeEffect === 'girl'
-                      ? 'bg-rose-500/20 border-rose-500/50 text-rose-300'
-                      : activeEffect === 'boy'
-                      ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-300'
-                      : 'bg-slate-800/90 border-slate-700 text-slate-300 hover:text-white'
-                  }`}
-                >
-                  <Wand2 className="w-3 h-3 text-fuchsia-400" />
-                  <span>{VOICE_PRESETS[activeEffect].name}</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Audio Waveform Visualization in Active Call reacting to DSP level */}
-            {session.status === 'connected' && (
-              <div className="flex items-center justify-center gap-1.5 h-10 py-2">
-                {[40, 70, 95, 60, 100, 80, 50, 90, 75, 45, 85, 30].map((height, i) => {
-                  const dynamicH = Math.max(15, Math.min(100, (height * (audioMeterLevel > 5 ? audioMeterLevel / 40 : 0.6) + (i % 3) * 15)));
-                  return (
-                    <span
-                      key={i}
-                      className={`w-1.5 rounded-full transition-all duration-100 ${
-                        activeEffect === 'girl'
-                          ? 'bg-gradient-to-t from-rose-500 to-pink-300'
-                          : activeEffect === 'boy'
-                          ? 'bg-gradient-to-t from-indigo-500 to-sky-300'
-                          : 'bg-gradient-to-t from-fuchsia-500 to-indigo-400'
-                      }`}
-                      style={{
-                        height: `${dynamicH}%`,
-                      }}
-                    />
-                  );
-                })}
-              </div>
-            )}
           </div>
         )}
       </div>
 
-      {/* Voice Changer Selector Modal / Popover Sheet */}
+      {/* Voice Changer Selector Modal */}
       {showVoiceMenu && (
-        <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl shadow-black/80 space-y-5 animate-in slide-in-from-bottom duration-300 relative">
-            {/* Header */}
-            <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-fuchsia-600 to-pink-500 flex items-center justify-center text-white shadow-lg shadow-fuchsia-500/30">
-                  <Wand2 className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-black text-white flex items-center gap-1.5">
-                    <span>Voice Changer</span>
-                    <span className="px-2 py-0.5 rounded-full bg-fuchsia-500/20 text-fuchsia-400 text-[10px] font-bold uppercase tracking-wider">
-                      Live Web Audio DSP
-                    </span>
-                  </h3>
-                  <p className="text-xs text-slate-400">Natural pitch & formant frequency modulation</p>
-                </div>
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-sm bg-[#111b21] border border-[#222e35] rounded-3xl p-5 shadow-2xl space-y-4 animate-in slide-in-from-bottom duration-300">
+            <div className="flex items-center justify-between pb-2 border-b border-[#222e35]">
+              <div className="flex items-center gap-2">
+                <Wand2 className="w-5 h-5 text-emerald-400" />
+                <h3 className="text-sm font-bold text-white">Voice Changer FX</h3>
               </div>
-
               <button
-                onClick={() => {
-                  audioUtils.playPop();
-                  setShowVoiceMenu(false);
-                }}
-                className="p-2 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors"
+                onClick={() => setShowVoiceMenu(false)}
+                className="p-1.5 rounded-full bg-[#202c33] text-slate-400 hover:text-white"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Voice Options Grid */}
-            <div className="space-y-3">
+            <div className="space-y-2">
               {(['original', 'girl', 'boy'] as VoiceEffect[]).map((fxKey) => {
                 const preset = VOICE_PRESETS[fxKey];
                 const isSelected = activeEffect === fxKey;
-
                 return (
                   <button
                     key={fxKey}
                     onClick={() => handleSelectVoice(fxKey)}
-                    className={`w-full p-4 rounded-2xl border text-left transition-all flex items-center justify-between group ${
+                    className={`w-full p-3 rounded-2xl border text-left transition-all flex items-center justify-between ${
                       isSelected
-                        ? fxKey === 'girl'
-                          ? 'bg-rose-500/15 border-rose-500/70 shadow-lg shadow-rose-950/40 ring-1 ring-rose-500/30'
-                          : fxKey === 'boy'
-                          ? 'bg-indigo-500/15 border-indigo-500/70 shadow-lg shadow-indigo-950/40 ring-1 ring-indigo-500/30'
-                          : 'bg-slate-800/90 border-slate-600 shadow-lg ring-1 ring-slate-600/40'
-                        : 'bg-slate-950/60 border-slate-800/80 hover:bg-slate-800/40 hover:border-slate-700'
+                        ? 'bg-emerald-500/15 border-emerald-500 text-white shadow-md'
+                        : 'bg-[#202c33] border-transparent hover:bg-[#2a3942] text-slate-200'
                     }`}
                   >
-                    <div className="flex items-center gap-3.5">
-                      <div
-                        className={`w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shadow-md border ${
-                          isSelected
-                            ? 'bg-slate-900 border-white/20'
-                            : 'bg-slate-900/80 border-slate-800 group-hover:scale-105'
-                        } transition-transform`}
-                      >
-                        {preset.icon}
-                      </div>
-
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">{preset.icon}</span>
                       <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-sm font-bold text-white tracking-tight">{preset.name}</h4>
-                          {isSelected && (
-                            <span
-                              className={`text-[10px] px-2 py-0.5 rounded-full font-extrabold uppercase ${
-                                fxKey === 'girl'
-                                  ? 'bg-rose-500 text-white'
-                                  : fxKey === 'boy'
-                                  ? 'bg-indigo-600 text-white'
-                                  : 'bg-emerald-600 text-white'
-                              }`}
-                            >
-                              Active
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-slate-400 mt-0.5">{preset.tagline}</p>
+                        <div className="text-xs font-bold text-white">{preset.name}</div>
+                        <div className="text-[10px] text-slate-400">{preset.tagline}</div>
                       </div>
                     </div>
-
-                    <div className="flex items-center">
-                      <div
-                        className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${
-                          isSelected
-                            ? fxKey === 'girl'
-                              ? 'border-rose-500 bg-rose-500 text-white'
-                              : fxKey === 'boy'
-                              ? 'border-indigo-500 bg-indigo-500 text-white'
-                              : 'border-emerald-500 bg-emerald-500 text-white'
-                            : 'border-slate-700 bg-slate-900'
-                        }`}
-                      >
-                        {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
-                      </div>
-                    </div>
+                    {isSelected && <Check className="w-4 h-4 text-emerald-400" />}
                   </button>
                 );
               })}
             </div>
 
-            {/* Live Audio Level Meter & Info Note */}
-            <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800/80 space-y-2">
-              <div className="flex items-center justify-between text-[11px] font-semibold">
-                <span className="text-slate-400 flex items-center gap-1.5">
-                  <Zap className="w-3.5 h-3.5 text-amber-400" />
-                  Live Mic Activity
-                </span>
-                <span className="text-fuchsia-400 font-bold">
-                  {activeEffect === 'girl' ? '+4.7st (Girl Formant)' : activeEffect === 'boy' ? '-4.3st (Deep Boy)' : '0.0st (Unmodified)'}
-                </span>
-              </div>
-              <div className="w-full h-2 bg-slate-900 rounded-full overflow-hidden border border-slate-800 p-0.5">
-                <div
-                  className={`h-full rounded-full transition-all duration-75 ${
-                    activeEffect === 'girl'
-                      ? 'bg-gradient-to-r from-pink-500 to-rose-400'
-                      : activeEffect === 'boy'
-                      ? 'bg-gradient-to-r from-indigo-500 to-sky-400'
-                      : 'bg-gradient-to-r from-emerald-500 to-teal-400'
-                  }`}
-                  style={{ width: `${Math.max(8, audioMeterLevel)}%` }}
-                />
-              </div>
-            </div>
-
-            {/* Close / Apply button */}
             <button
-              onClick={() => {
-                audioUtils.playPop();
-                setShowVoiceMenu(false);
-              }}
-              className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-fuchsia-600 via-pink-600 to-indigo-600 hover:from-fuchsia-500 hover:to-indigo-500 text-white font-bold shadow-xl shadow-fuchsia-950/50 active:scale-[0.98] transition-all"
+              onClick={() => setShowVoiceMenu(false)}
+              className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-xs font-bold text-white transition-colors"
             >
-              Apply Voice & Continue Call
+              Done
             </button>
           </div>
         </div>
       )}
 
-      {/* Interactive Bottom Calling Controls Deck */}
-      <div className="relative z-20 w-full max-w-xl mx-auto px-6 pb-8 pt-4">
-        <div className="bg-slate-900/90 backdrop-blur-2xl border border-slate-800/80 rounded-3xl p-4 shadow-2xl shadow-black/60 flex items-center justify-around gap-2">
-          {/* Mute Mic Toggle */}
-          <button
-            onClick={() => {
-              audioUtils.playPop();
-              onToggleMute();
-            }}
-            className={`p-3.5 rounded-2xl transition-all shadow-md flex flex-col items-center gap-1 ${
-              session.isMuted
-                ? 'bg-rose-500 text-white shadow-rose-900/50 scale-105'
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white'
-            }`}
-            title={session.isMuted ? 'Unmute Microphone' : 'Mute Microphone'}
-          >
-            {session.isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-            <span className="text-[9px] font-semibold">{session.isMuted ? 'Muted' : 'Mute'}</span>
-          </button>
+      {/* More Options Modal */}
+      {showMoreMenu && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-sm bg-[#111b21] border border-[#222e35] rounded-3xl p-5 shadow-2xl space-y-3 animate-in slide-in-from-bottom duration-300">
+            <div className="flex items-center justify-between pb-2 border-b border-[#222e35]">
+              <span className="text-sm font-bold text-white">Call Options</span>
+              <button
+                onClick={() => setShowMoreMenu(false)}
+                className="p-1.5 rounded-full bg-[#202c33] text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
-          {/* Voice Changer Toggle Button */}
-          <button
-            onClick={() => {
-              audioUtils.playPop();
-              setShowVoiceMenu(!showVoiceMenu);
-            }}
-            className={`p-3.5 rounded-2xl transition-all shadow-md flex flex-col items-center gap-1 relative ${
-              activeEffect === 'girl'
-                ? 'bg-gradient-to-tr from-rose-600 to-pink-600 text-white shadow-rose-950/60 ring-2 ring-rose-400/50 scale-105'
-                : activeEffect === 'boy'
-                ? 'bg-gradient-to-tr from-indigo-600 to-violet-600 text-white shadow-indigo-950/60 ring-2 ring-indigo-400/50 scale-105'
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white'
-            }`}
-            title="Open Voice Changer Menu"
-          >
-            <Wand2 className="w-5 h-5" />
-            <span className="text-[9px] font-semibold">
-              {activeEffect === 'girl' ? 'Girl FX' : activeEffect === 'boy' ? 'Boy FX' : 'Voice FX'}
-            </span>
-            {activeEffect !== 'original' && (
-              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-white animate-ping" />
-            )}
-          </button>
+            <div className="space-y-2">
+              {/* Voice FX button */}
+              <button
+                onClick={() => {
+                  setShowMoreMenu(false);
+                  setShowVoiceMenu(true);
+                }}
+                className="w-full p-3 rounded-2xl bg-[#202c33] hover:bg-[#2a3942] text-slate-200 hover:text-white flex items-center justify-between transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <Wand2 className="w-5 h-5 text-fuchsia-400" />
+                  <div className="text-left">
+                    <div className="text-xs font-bold text-white">Voice Changer FX</div>
+                    <div className="text-[10px] text-slate-400">Current: {VOICE_PRESETS[activeEffect].name}</div>
+                  </div>
+                </div>
+                <span className="text-[10px] bg-[#111b21] px-2 py-0.5 rounded-full text-slate-300">Change</span>
+              </button>
 
-          {/* Camera Video Toggle */}
-          <button
-            onClick={() => {
-              audioUtils.playPop();
-              onToggleVideo();
-            }}
-            className={`p-3.5 rounded-2xl transition-all shadow-md flex flex-col items-center gap-1 ${
-              session.isVideoOff
-                ? 'bg-amber-500 text-white shadow-amber-900/50'
-                : isVideo
-                ? 'bg-fuchsia-600 text-white shadow-fuchsia-900/50'
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white'
-            }`}
-            title={session.isVideoOff ? 'Turn Video On' : 'Turn Video Off'}
-          >
-            {session.isVideoOff ? <VideoOff className="w-5 h-5" /> : <Video className="w-5 h-5" />}
-            <span className="text-[9px] font-semibold">{session.isVideoOff ? 'Cam Off' : 'Video'}</span>
-          </button>
+              {/* Flip camera if video */}
+              {isVideo && (
+                <button
+                  onClick={() => {
+                    setShowMoreMenu(false);
+                    onFlipCamera();
+                    showFeedback('Flipped camera');
+                  }}
+                  className="w-full p-3 rounded-2xl bg-[#202c33] hover:bg-[#2a3942] text-slate-200 hover:text-white flex items-center gap-3 transition-colors"
+                >
+                  <RotateCcw className="w-5 h-5 text-cyan-400" />
+                  <div className="text-xs font-bold text-white">Flip Camera</div>
+                </button>
+              )}
 
-          {/* Camera Flip (Video mode only) */}
-          {isVideo && (
+              {/* In-Call Chat */}
+              <button
+                onClick={() => {
+                  setShowMoreMenu(false);
+                  setIsMinimized(true);
+                  startChatWithUser(session.participant);
+                }}
+                className="w-full p-3 rounded-2xl bg-[#202c33] hover:bg-[#2a3942] text-slate-200 hover:text-white flex items-center gap-3 transition-colors"
+              >
+                <MessageCircle className="w-5 h-5 text-emerald-400" />
+                <div className="text-xs font-bold text-white">Chat with {session.participant.name}</div>
+              </button>
+            </div>
+
             <button
-              onClick={() => {
-                audioUtils.playPop();
-                onFlipCamera();
-              }}
-              className="p-3.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white transition-all shadow-md flex flex-col items-center gap-1"
-              title="Flip Camera"
+              onClick={() => setShowMoreMenu(false)}
+              className="w-full py-2.5 bg-[#202c33] hover:bg-[#2a3942] rounded-xl text-xs font-bold text-white transition-colors"
             >
-              <RotateCcw className="w-5 h-5" />
-              <span className="text-[9px] font-semibold">Flip</span>
+              Close
             </button>
-          )}
+          </div>
+        </div>
+      )}
 
-          {/* Speakerphone Toggle */}
-          <button
-            onClick={() => {
-              audioUtils.playPop();
-              onToggleSpeaker();
-            }}
-            className={`p-3.5 rounded-2xl transition-all shadow-md flex flex-col items-center gap-1 ${
-              session.isSpeakerOn
-                ? 'bg-indigo-600 text-white shadow-indigo-900/50'
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white'
-            }`}
-            title={session.isSpeakerOn ? 'Speaker On' : 'Earpiece Mode'}
-          >
-            {session.isSpeakerOn ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
-            <span className="text-[9px] font-semibold">{session.isSpeakerOn ? 'Speaker' : 'Earpiece'}</span>
-          </button>
+      {/* ========================================================================= */}
+      {/* Bottom Floating Control Card: Exact WhatsApp 2-Row Style from Screenshot  */}
+      {/* ========================================================================= */}
+      <div className="relative z-30 w-full max-w-sm sm:max-w-md mx-auto px-4 pb-8 sm:pb-10">
+        <div className="bg-[#111b21] border border-[#222e35] rounded-[36px] p-6 pt-5 shadow-2xl shadow-black/80">
+          <div className="grid grid-cols-3 gap-y-6 gap-x-4 place-items-center">
+            
+            {/* Row 1, Column 1: Speaker */}
+            <div className="flex flex-col items-center gap-2">
+              <button
+                onClick={() => {
+                  audioUtils.playPop();
+                  onToggleSpeaker();
+                  showFeedback(session.isSpeakerOn ? 'Earpiece Mode' : 'Speaker ON');
+                }}
+                className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center transition-all active:scale-95 ${
+                  session.isSpeakerOn
+                    ? 'bg-white text-[#111b21] shadow-lg'
+                    : 'bg-[#202c33] hover:bg-[#2a3942] text-white'
+                }`}
+                title={session.isSpeakerOn ? 'Speaker ON' : 'Speaker OFF'}
+                aria-label="Speaker"
+              >
+                <Volume2 className="w-6 h-6 sm:w-7 sm:h-7" />
+              </button>
+              <span className="text-xs text-slate-300 font-medium">Speaker</span>
+            </div>
 
-          {/* In-Call Chat button */}
-          <button
-            onClick={() => {
-              audioUtils.playPop();
-              setIsMinimized(true);
-              startChatWithUser(session.participant);
-            }}
-            className="p-3.5 rounded-2xl bg-slate-800 hover:bg-indigo-600/30 text-indigo-300 hover:text-white border border-indigo-500/30 transition-all shadow-md flex flex-col items-center gap-1"
-            title="Chat while on Call"
-          >
-            <MessageCircle className="w-5 h-5 text-indigo-400" />
-            <span className="text-[9px] font-semibold">Chat</span>
-          </button>
+            {/* Row 1, Column 2: Video */}
+            <div className="flex flex-col items-center gap-2">
+              <button
+                onClick={() => {
+                  audioUtils.playPop();
+                  onToggleVideo();
+                  showFeedback(session.isVideoOff ? 'Camera ON' : 'Camera OFF');
+                }}
+                className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center transition-all active:scale-95 ${
+                  session.isVideoOff
+                    ? 'bg-[#202c33] hover:bg-[#2a3942] text-slate-400'
+                    : isVideo
+                    ? 'bg-white text-[#111b21] shadow-lg'
+                    : 'bg-[#202c33] hover:bg-[#2a3942] text-white'
+                }`}
+                title={session.isVideoOff ? 'Turn Video On' : 'Turn Video Off'}
+                aria-label="Video"
+              >
+                {session.isVideoOff ? (
+                  <VideoOff className="w-6 h-6 sm:w-7 sm:h-7" />
+                ) : (
+                  <Video className="w-6 h-6 sm:w-7 sm:h-7" />
+                )}
+              </button>
+              <span className="text-xs text-slate-300 font-medium">Video</span>
+            </div>
 
-          {/* End Call Button */}
-          <button
-            onClick={() => {
-              audioUtils.playPop();
-              onEndCall();
-            }}
-            className="p-3.5 px-5 rounded-2xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-bold shadow-xl shadow-rose-950/60 hover:scale-105 active:scale-95 transition-all flex flex-col items-center gap-1"
-            title="End Active Call"
-          >
-            <PhoneOff className="w-5 h-5" />
-            <span className="text-[9px] font-bold">End</span>
-          </button>
+            {/* Row 1, Column 3: Mute */}
+            <div className="flex flex-col items-center gap-2">
+              <button
+                onClick={() => {
+                  audioUtils.playPop();
+                  onToggleMute();
+                  showFeedback(session.isMuted ? 'Microphone unmuted' : 'Microphone muted');
+                }}
+                className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center transition-all active:scale-95 ${
+                  session.isMuted
+                    ? 'bg-white text-[#111b21] shadow-lg'
+                    : 'bg-[#202c33] hover:bg-[#2a3942] text-white'
+                }`}
+                title={session.isMuted ? 'Unmute Mic' : 'Mute Mic'}
+                aria-label="Mute"
+              >
+                {session.isMuted ? (
+                  <MicOff className="w-6 h-6 sm:w-7 sm:h-7" />
+                ) : (
+                  <Mic className="w-6 h-6 sm:w-7 sm:h-7" />
+                )}
+              </button>
+              <span className="text-xs text-slate-300 font-medium">Mute</span>
+            </div>
+
+            {/* Row 2, Column 1: More */}
+            <div className="flex flex-col items-center gap-2">
+              <button
+                onClick={() => {
+                  audioUtils.playPop();
+                  setShowMoreMenu(true);
+                }}
+                className="w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center transition-all bg-[#202c33] hover:bg-[#2a3942] text-white active:scale-95"
+                title="More Options"
+                aria-label="More"
+              >
+                <MoreHorizontal className="w-6 h-6 sm:w-7 sm:h-7" />
+              </button>
+              <span className="text-xs text-slate-300 font-medium">More</span>
+            </div>
+
+            {/* Row 2, Column 2: Share */}
+            <div className="flex flex-col items-center gap-2">
+              <button
+                onClick={handleShareClick}
+                className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center transition-all active:scale-95 ${
+                  isScreenSharing
+                    ? 'bg-emerald-500 text-white shadow-lg'
+                    : 'bg-[#202c33] hover:bg-[#2a3942] text-white'
+                }`}
+                title="Share Screen or Invite"
+                aria-label="Share"
+              >
+                <svg
+                  className="w-5 h-5 sm:w-6 sm:h-6 text-white"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                >
+                  <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 5l4 4h-3v4h-2v-4H8l4-4z" />
+                </svg>
+              </button>
+              <span className="text-xs text-slate-300 font-medium">Share</span>
+            </div>
+
+            {/* Row 2, Column 3: End */}
+            <div className="flex flex-col items-center gap-2">
+              <button
+                onClick={() => {
+                  audioUtils.playPop();
+                  onEndCall();
+                }}
+                className="w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center transition-all bg-[#ea0038] hover:bg-[#d00030] active:scale-95 text-white shadow-xl shadow-red-950/60"
+                title="End Call"
+                aria-label="End"
+              >
+                <Phone className="w-6 h-6 sm:w-7 sm:h-7 rotate-[135deg]" />
+              </button>
+              <span className="text-xs text-slate-300 font-medium">End</span>
+            </div>
+
+          </div>
         </div>
       </div>
     </div>
   );
 };
-
