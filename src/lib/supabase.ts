@@ -267,6 +267,21 @@ export const profileService = {
     return `pulse_profile_${userId}`;
   },
 
+  clearCache() {
+    if (typeof window !== 'undefined') {
+      try {
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && (key.startsWith('pulse_profile_') || key.startsWith('pulse_connections_') || key.startsWith('pulse_friend_'))) {
+            keysToRemove.push(key);
+          }
+        }
+        keysToRemove.forEach((k) => localStorage.removeItem(k));
+      } catch (e) {}
+    }
+  },
+
   async getProfile(userId: string): Promise<Partial<User> | null> {
     const persistentAvatar = getPersistentAvatar(userId);
     let cachedProfile: Partial<User> | null = null;
@@ -274,7 +289,13 @@ export const profileService = {
       try {
         const cachedStr = localStorage.getItem(this.getCacheKey(userId));
         if (cachedStr) {
-          cachedProfile = JSON.parse(cachedStr);
+          const parsed = JSON.parse(cachedStr);
+          // If cached profile contains the outdated fallback "Pulse User", discard and clean
+          if (parsed && (!parsed.name || parsed.name.includes('Pulse User'))) {
+            localStorage.removeItem(this.getCacheKey(userId));
+          } else {
+            cachedProfile = parsed;
+          }
         }
       } catch (e) {
         // ignore parse error
@@ -292,7 +313,7 @@ export const profileService = {
       return cachedProfile;
     }
 
-    // 1. Try fetching from Supabase 'profiles' table
+    // 1. Try fetching from Supabase 'profiles' table using friend_id / user_id
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -301,10 +322,11 @@ export const profileService = {
         .maybeSingle();
 
       if (!error && data) {
-        const fetchedAvatar = persistentAvatar || data.avatar_url || data.avatar || cachedProfile?.avatar;
+        const resolvedName = data.display_name || data.name || data.full_name || data.username || cachedProfile?.name;
+        const fetchedAvatar = data.avatar_url || data.avatar || persistentAvatar || cachedProfile?.avatar;
         const fetched: Partial<User> = {
           id: data.id,
-          name: data.full_name || data.name || data.display_name || cachedProfile?.name,
+          name: resolvedName,
           username: data.username || data.user_name || cachedProfile?.username,
           avatar: fetchedAvatar,
           bio: data.bio ?? data.about ?? cachedProfile?.bio,
@@ -315,7 +337,7 @@ export const profileService = {
           isPrivate: data.is_private ?? data.isPrivate ?? cachedProfile?.isPrivate,
         };
 
-        if (typeof window !== 'undefined') {
+        if (typeof window !== 'undefined' && resolvedName && !resolvedName.includes('Pulse User')) {
           localStorage.setItem(this.getCacheKey(userId), JSON.stringify(fetched));
         }
         return fetched;
@@ -1064,7 +1086,22 @@ export const connectionsService = {
   },
 
   async fetchConnections(userId: string): Promise<UserConnection[]> {
-    const cached = this.getLocalConnections(userId);
+    // 0. Ensure cache is clean of contaminated "Pulse User" entries
+    if (typeof window !== 'undefined') {
+      try {
+        const cacheKey = this.getCacheKey(userId);
+        const cachedRawStr = localStorage.getItem(cacheKey);
+        if (cachedRawStr && cachedRawStr.includes('Pulse User')) {
+          localStorage.removeItem(cacheKey);
+        }
+      } catch (e) {}
+    }
+    const cachedRaw = this.getLocalConnections(userId);
+    const cached = cachedRaw.filter(
+      (c) =>
+        (!c.requester?.name || !c.requester.name.includes('Pulse User')) &&
+        (!c.receiver?.name || !c.receiver.name.includes('Pulse User'))
+    );
     const candidateConnections: UserConnection[] = [];
 
     // 1. Fetch from shared backend API (supports multi-device cross-sync)
@@ -1092,6 +1129,90 @@ export const connectionsService = {
     }
 
     if (supabase && userId) {
+      // 2. Fetch from Supabase 'friends' table joining profiles!friends_friend_id_fkey
+      try {
+        let friendsData: any[] | null = null;
+        try {
+          const { data, error } = await supabase
+            .from('friends')
+            .select(`
+              *,
+              friend:profiles!friends_friend_id_fkey (
+                id,
+                display_name,
+                full_name,
+                name,
+                username,
+                avatar_url,
+                avatar
+              )
+            `)
+            .or(`user_id.eq.${userId},friend_id.eq.${userId}`);
+          if (!error && data && data.length > 0) {
+            friendsData = data;
+          }
+        } catch (e) {
+          // Fallback if join relation syntax differs
+        }
+
+        if (!friendsData) {
+          try {
+            const { data, error } = await supabase
+              .from('friends')
+              .select('*, profiles(id, display_name, full_name, name, username, avatar_url, avatar)')
+              .or(`user_id.eq.${userId},friend_id.eq.${userId}`);
+            if (!error && data && data.length > 0) {
+              friendsData = data;
+            }
+          } catch (e) {}
+        }
+
+        if (!friendsData) {
+          try {
+            const { data, error } = await supabase
+              .from('friends')
+              .select('*')
+              .or(`user_id.eq.${userId},friend_id.eq.${userId}`);
+            if (!error && data && data.length > 0) {
+              friendsData = data;
+            }
+          } catch (e) {}
+        }
+
+        if (friendsData && friendsData.length > 0) {
+          for (const row of friendsData) {
+            const friendId = String(row.friend_id === userId ? row.user_id : (row.friend_id || row.user_id));
+            const prof = row.friend || row.profiles;
+            const friendName = prof?.display_name || prof?.name || prof?.full_name || prof?.username || row.friend_name;
+            const friendAvatar = prof?.avatar_url || prof?.avatar || row.friend_avatar;
+
+            const otherUser: User = {
+              id: friendId,
+              name: friendName || friendId,
+              username: prof?.username || `user_${friendId.slice(0, 8)}`,
+              avatar: friendAvatar || `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80`,
+              followersCount: 10,
+              followingCount: 5,
+              likesCount: 20,
+            };
+
+            candidateConnections.push({
+              id: `friend_${row.id || friendId}`,
+              requesterId: row.user_id || userId,
+              receiverId: friendId,
+              status: (row.status as ConnectionStatus) || 'accepted',
+              createdAt: row.created_at || new Date().toISOString(),
+              updatedAt: row.updated_at || row.created_at || new Date().toISOString(),
+              receiver: otherUser,
+              requester: undefined,
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('Supabase friends table fetch notice:', err);
+      }
+
+      // 3. Fetch from Supabase 'connections' table
       try {
         const norm = normalizeUserId(userId);
         const { data, error } = await supabase
@@ -1115,6 +1236,64 @@ export const connectionsService = {
         }
       } catch (err) {
         console.warn('Supabase fetchConnections warning:', err);
+      }
+
+      // 4. Fetch real display_name & avatar_url from 'profiles' for all connected friend IDs
+      try {
+        const friendUserIds = new Set<string>();
+        for (const conn of candidateConnections) {
+          if (conn.requesterId && conn.requesterId !== userId) {
+            friendUserIds.add(conn.requesterId);
+          }
+          if (conn.receiverId && conn.receiverId !== userId) {
+            friendUserIds.add(conn.receiverId);
+          }
+        }
+
+        if (friendUserIds.size > 0) {
+          const { data: profilesData } = await supabase
+            .from('profiles')
+            .select('id, display_name, full_name, name, username, avatar_url, avatar')
+            .in('id', Array.from(friendUserIds));
+
+          if (profilesData && profilesData.length > 0) {
+            const profileMap = new Map<string, any>();
+            profilesData.forEach((p) => profileMap.set(p.id, p));
+
+            for (const conn of candidateConnections) {
+              if (conn.requesterId && profileMap.has(conn.requesterId)) {
+                const p = profileMap.get(conn.requesterId);
+                const realName = p.display_name || p.name || p.full_name || p.username || (p.username ? `@${p.username}` : conn.requesterId);
+                const realAvatar = p.avatar_url || p.avatar;
+                conn.requester = {
+                  id: conn.requesterId,
+                  name: realName,
+                  username: p.username || `user_${conn.requesterId.slice(0, 8)}`,
+                  avatar: realAvatar || conn.requester?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
+                  followersCount: conn.requester?.followersCount ?? 0,
+                  followingCount: conn.requester?.followingCount ?? 0,
+                  likesCount: conn.requester?.likesCount ?? 0,
+                };
+              }
+              if (conn.receiverId && profileMap.has(conn.receiverId)) {
+                const p = profileMap.get(conn.receiverId);
+                const realName = p.display_name || p.name || p.full_name || p.username || (p.username ? `@${p.username}` : conn.receiverId);
+                const realAvatar = p.avatar_url || p.avatar;
+                conn.receiver = {
+                  id: conn.receiverId,
+                  name: realName,
+                  username: p.username || `user_${conn.receiverId.slice(0, 8)}`,
+                  avatar: realAvatar || conn.receiver?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
+                  followersCount: conn.receiver?.followersCount ?? 0,
+                  followingCount: conn.receiver?.followingCount ?? 0,
+                  likesCount: conn.receiver?.likesCount ?? 0,
+                };
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Profiles enrichment error:', err);
       }
     }
 
@@ -1908,9 +2087,40 @@ export const usersDiscoveryService = {
 
   async lookupUser(idOrUsername: string): Promise<User | null> {
     if (!idOrUsername) return null;
-    const clean = idOrUsername.trim().toLowerCase().replace(/^[@#]/, '');
+    const clean = idOrUsername.trim().replace(/^[@#]/, '');
+    const cleanLower = clean.toLowerCase();
+
+    // 1. Direct query against Supabase 'profiles' table using friend_id / username
+    if (supabase) {
+      try {
+        const { data: prof, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .or(`id.eq.${clean},username.ilike.${clean},username.ilike.${cleanLower}`)
+          .maybeSingle();
+
+        if (!error && prof) {
+          const resolvedName = prof.display_name || prof.name || prof.full_name || prof.username || clean;
+          const resolvedAvatar = prof.avatar_url || prof.avatar || getPersistentAvatar(prof.id) || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80';
+          return {
+            id: prof.id,
+            name: resolvedName,
+            username: prof.username || cleanLower,
+            avatar: resolvedAvatar,
+            bio: prof.bio || prof.about || 'Pulse Member ✨',
+            followersCount: prof.followers_count || 10,
+            followingCount: prof.following_count || 5,
+            likesCount: prof.likes_count || 20,
+          };
+        }
+      } catch (err) {
+        console.warn('Supabase profiles lookup error:', err);
+      }
+    }
+
+    // 2. Fetch from shared backend API
     try {
-      const resp = await fetch(`/api/users/lookup/${encodeURIComponent(clean)}`);
+      const resp = await fetch(`/api/users/lookup/${encodeURIComponent(cleanLower)}`);
       if (resp.ok) {
         const data = await resp.json();
         if (data.success && data.user) {
@@ -1918,6 +2128,24 @@ export const usersDiscoveryService = {
         }
       }
     } catch {}
+
+    // 3. Fallback to profileService
+    try {
+      const prof = await profileService.getProfile(clean);
+      if (prof && prof.id && prof.name && !prof.name.includes('Pulse User')) {
+        return {
+          id: prof.id,
+          name: prof.name,
+          username: prof.username || cleanLower,
+          avatar: prof.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
+          bio: prof.bio || 'Pulse Member ✨',
+          followersCount: prof.followersCount || 10,
+          followingCount: prof.followingCount || 5,
+          likesCount: prof.likesCount || 20,
+        };
+      }
+    } catch {}
+
     return null;
   },
 };

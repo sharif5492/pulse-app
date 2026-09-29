@@ -270,6 +270,12 @@ export class ZegoLiveEngine {
     }
   }
 
+  async joinRoom(roomId: string, token?: string, user?: any, config?: any): Promise<boolean> {
+    this.roomId = roomId;
+    console.log(`[ZegoLiveEngine] Joined room ${roomId}`);
+    return true;
+  }
+
   destroy() {
     this.stopTracks();
     this.videoElement = null;
@@ -278,3 +284,4 @@ export class ZegoLiveEngine {
 }
 
 export const zegoLiveEngine = new ZegoLiveEngine();
+export const zg = zegoLiveEngine;

@@ -8,6 +8,8 @@ import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { audioUtils } from '../lib/audioUtils';
 import { UserStatusBadge } from './UserStatusBadge';
+import { profileService, supabase } from '../lib/supabase';
+import { User } from '../types';
 
 export const ChatRoomView: React.FC = () => {
   const { 
@@ -102,7 +104,45 @@ export const ChatRoomView: React.FC = () => {
 
   if (!activeConversation) return null;
 
-  const isBlocked = isUserBlocked(activeConversation.participant.id);
+  // Real-time profile resolution from Supabase 'profiles' table using friend_id
+  const [resolvedParticipant, setResolvedParticipant] = useState<User>(activeConversation.participant);
+
+  useEffect(() => {
+    if (!activeConversation?.participant) return;
+    setResolvedParticipant(activeConversation.participant);
+    const friendId = activeConversation.participant.id;
+
+    if (supabase && friendId) {
+      supabase
+        .from('profiles')
+        .select('id, display_name, full_name, name, username, avatar_url, avatar')
+        .eq('id', friendId)
+        .maybeSingle()
+        .then(
+          ({ data, error }) => {
+            if (!error && data) {
+              const realName = data.display_name || data.name || data.full_name || data.username;
+              const realAvatar = data.avatar_url || data.avatar;
+              if (realName || realAvatar) {
+                setResolvedParticipant((prev) => ({
+                  ...prev,
+                  name: realName || prev.name,
+                  avatar: realAvatar || prev.avatar,
+                  username: data.username || prev.username,
+                }));
+              }
+            }
+          },
+          (e) => console.warn('Supabase profile fetch in ChatRoom notice:', e)
+        );
+    }
+  }, [activeConversation?.participant?.id]);
+
+  const participantDisplayName = (!resolvedParticipant.name || resolvedParticipant.name.includes('Pulse User'))
+    ? (resolvedParticipant.username || (resolvedParticipant.id ? `@${resolvedParticipant.id.slice(0, 8)}` : 'Pulse Member'))
+    : resolvedParticipant.name;
+
+  const isBlocked = isUserBlocked(resolvedParticipant.id);
 
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
@@ -475,17 +515,17 @@ export const ChatRoomView: React.FC = () => {
             className="relative cursor-pointer group"
             onClick={() => {
               audioUtils.playPop();
-              viewProfileUser(activeConversation.participant);
+              viewProfileUser({ ...resolvedParticipant, name: participantDisplayName });
             }}
           >
             <img
-              src={activeConversation.participant.avatar}
-              alt={activeConversation.participant.name}
+              src={resolvedParticipant.avatar}
+              alt={participantDisplayName}
               className="w-9 h-9 rounded-full object-cover border border-slate-700 group-hover:border-fuchsia-500 transition-colors"
             />
             {!isBlocked && (
               <UserStatusBadge
-                isOnline={isUserOnline(activeConversation.participant.id) ?? activeConversation.isOnline}
+                isOnline={isUserOnline(resolvedParticipant.id) ?? activeConversation.isOnline}
                 size="xs"
                 className="absolute bottom-0 right-0"
               />
@@ -501,14 +541,14 @@ export const ChatRoomView: React.FC = () => {
             className="cursor-pointer"
             onClick={() => {
               audioUtils.playPop();
-              viewProfileUser(activeConversation.participant);
+              viewProfileUser({ ...resolvedParticipant, name: participantDisplayName });
             }}
           >
             <div className="flex items-center gap-1">
               <span className="font-bold text-xs text-white hover:text-fuchsia-400 transition-colors">
-                {activeConversation.participant.name}
+                {participantDisplayName}
               </span>
-              {activeConversation.participant.verified && (
+              {resolvedParticipant.verified && (
                 <span className="text-[9px] text-fuchsia-400 font-bold">✓</span>
               )}
             </div>
@@ -517,7 +557,7 @@ export const ChatRoomView: React.FC = () => {
                 <span className="text-rose-400 font-medium">Blocked</span>
               ) : isTyping ? (
                 <span className="text-fuchsia-400 font-medium animate-pulse">Typing...</span>
-              ) : (isUserOnline(activeConversation.participant.id) ?? activeConversation.isOnline) ? (
+              ) : (isUserOnline(resolvedParticipant.id) ?? activeConversation.isOnline) ? (
                 <span className="flex items-center gap-1.5 text-emerald-400 font-medium">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_6px_rgba(52,211,153,0.9)]" />
                   Active now
@@ -645,15 +685,23 @@ export const ChatRoomView: React.FC = () => {
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-3.5 no-scrollbar">
         <div className="text-center py-4 space-y-1">
           <img
-            src={activeConversation.participant.avatar}
-            alt={activeConversation.participant.name}
+            src={resolvedParticipant.avatar}
+            alt={participantDisplayName}
             className="w-14 h-14 rounded-full mx-auto object-cover border-2 border-slate-700 shadow-md"
           />
-          <h4 className="text-sm font-bold text-white">{activeConversation.participant.name}</h4>
+          <h4 className="text-sm font-bold text-white">{participantDisplayName}</h4>
           <p className="text-[11px] text-slate-500">Pulse verified creator • End-to-end encrypted</p>
         </div>
 
-        {activeConversation.messages.map((msg, idx) => {
+        {activeConversation.messages
+          .filter((msg) => {
+            const isMe = msg.senderId === user?.id || msg.senderId === 'usr_current';
+            if (!isMe && (isBlocked || isUserBlocked(msg.senderId) || isUserBlocked(resolvedParticipant.id))) {
+              return false;
+            }
+            return true;
+          })
+          .map((msg, idx) => {
           const isMe = msg.senderId === user?.id || msg.senderId === 'usr_current';
           const isAudio = msg.mediaType === 'audio' || msg.text?.includes('Voice Note');
           const isImage = msg.mediaType === 'image';
@@ -666,8 +714,8 @@ export const ChatRoomView: React.FC = () => {
             >
               {!isMe && (
                 <img
-                  src={activeConversation.participant.avatar}
-                  alt={activeConversation.participant.name}
+                  src={resolvedParticipant.avatar}
+                  alt={participantDisplayName}
                   className="w-6 h-6 rounded-full object-cover mb-1 shrink-0"
                 />
               )}
@@ -807,7 +855,7 @@ export const ChatRoomView: React.FC = () => {
         <div className="px-4 py-1.5 flex items-center gap-2 text-xs text-slate-400 bg-slate-950/80">
           <span className="w-2 h-2 rounded-full bg-fuchsia-500 animate-ping" />
           <span className="text-[11px] text-fuchsia-300">
-            {activeConversation.participant.name} is typing...
+            {participantDisplayName} is typing...
           </span>
         </div>
       )}
@@ -816,12 +864,12 @@ export const ChatRoomView: React.FC = () => {
       {isBlocked ? (
         <div className="p-4 bg-slate-900 border-t border-slate-800 text-center space-y-1 text-slate-500">
           <p className="text-xs font-semibold text-slate-400">
-            You cannot message @{activeConversation.participant.username} while they are blocked.
+            You cannot message @{resolvedParticipant.username} while they are blocked.
           </p>
           <button
             onClick={() => {
               audioUtils.playPop();
-              unblockUser(activeConversation.participant.id);
+              unblockUser(resolvedParticipant.id);
             }}
             className="text-xs font-bold text-emerald-400 hover:text-emerald-300 underline"
           >
@@ -918,7 +966,7 @@ export const ChatRoomView: React.FC = () => {
                   messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
                 }, 300);
               }}
-              placeholder={`Message @${activeConversation.participant.username || activeConversation.participant.name}...`}
+              placeholder={`Message @${resolvedParticipant.username || participantDisplayName}...`}
               className="w-full bg-slate-950 border border-slate-700/80 focus:border-fuchsia-500 rounded-full px-4 py-2.5 text-sm text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-fuchsia-500 shadow-inner"
             />
           </div>

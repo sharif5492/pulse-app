@@ -41,15 +41,24 @@ export const StoriesTray: React.FC = () => {
               }`}
             >
               <div className="w-full h-full rounded-full bg-slate-950 p-[2px] overflow-hidden">
-                <img
-                  src={
-                    latestUserItem?.url ||
-                    user?.avatar ||
-                    'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80'
-                  }
-                  alt="Your Story"
-                  className="w-full h-full object-cover rounded-full"
-                />
+                {latestUserItem && (latestUserItem.type === 'video' || latestUserItem.url.toLowerCase().endsWith('.mp4') || latestUserItem.url.includes('video')) ? (
+                  <video
+                    src={latestUserItem.url}
+                    muted
+                    playsInline
+                    className="w-full h-full object-cover rounded-full pointer-events-none"
+                  />
+                ) : (
+                  <img
+                    src={
+                      latestUserItem?.url ||
+                      user?.avatar ||
+                      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80'
+                    }
+                    alt="Your Story"
+                    className="w-full h-full object-cover rounded-full"
+                  />
+                )}
               </div>
             </button>
 

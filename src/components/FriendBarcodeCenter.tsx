@@ -10,7 +10,7 @@ import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { User } from '../types';
 import { audioUtils } from '../lib/audioUtils';
-import { usersDiscoveryService } from '../lib/supabase';
+import { usersDiscoveryService, profileService, supabase } from '../lib/supabase';
 import { areUserIdsEqual, normalizeUserId } from '../utils/userIdUtils';
 
 interface FriendBarcodeCenterProps {
@@ -54,7 +54,7 @@ export const FriendBarcodeCenter: React.FC<FriendBarcodeCenterProps> = ({
 
   const currentUserId = user?.id || 'usr_current';
   const currentUsername = user?.username || 'pulse_creator';
-  const currentName = user?.name || 'Pulse User';
+  const currentName = user?.name || user?.username || 'Pulse Member';
   const currentAvatar = user?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&auto=format&fit=crop&q=80';
 
   // 1. Generate My Barcode / QR Code
@@ -192,21 +192,58 @@ export const FriendBarcodeCenter: React.FC<FriendBarcodeCenterProps> = ({
     }
 
     try {
-      const foundUser = await usersDiscoveryService.lookupUser(targetIdOrUsername);
+      const cleanId = targetIdOrUsername.trim().replace(/^[@#]/, '');
+      let foundUser: User | null = null;
+
+      // 1. Fetch display_name and avatar_url directly from Supabase table "profiles" using friend_id
+      if (supabase && cleanId) {
+        try {
+          const { data: prof, error } = await supabase
+            .from('profiles')
+            .select('id, display_name, full_name, name, username, avatar_url, avatar, bio, verified, followers_count, following_count, likes_count')
+            .or(`id.eq.${cleanId},username.ilike.${cleanId}`)
+            .maybeSingle();
+
+          if (!error && prof) {
+            const realName = prof.display_name || prof.name || prof.full_name || prof.username || cleanId;
+            const realAvatar = prof.avatar_url || prof.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80';
+            foundUser = {
+              id: prof.id || cleanId,
+              name: realName,
+              username: prof.username || cleanId,
+              avatar: realAvatar,
+              bio: prof.bio || 'Discovered via Barcode Scan',
+              verified: prof.verified,
+              followersCount: prof.followers_count ?? 10,
+              followingCount: prof.following_count ?? 5,
+              likesCount: prof.likes_count ?? 20,
+            };
+          }
+        } catch (err) {
+          console.warn('Supabase profile fetch in FriendBarcodeCenter notice:', err);
+        }
+      }
+
+      if (!foundUser) {
+        foundUser = await usersDiscoveryService.lookupUser(targetIdOrUsername);
+      }
+
       if (foundUser) {
         setScannedResult(foundUser);
       } else {
-        // Create optimistic user representation for immediate connection
-        const cleanId = targetIdOrUsername.trim().replace(/^[@#]/, '');
+        const prof = await profileService.getProfile(cleanId);
+        const resolvedName = prof?.name && !prof.name.includes('Pulse User') ? prof.name : (prof?.username || cleanId);
+        const resolvedAvatar = prof?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80';
+
         const fallbackUser: User = {
           id: cleanId,
-          name: cleanId.length > 12 ? `Pulse User (${cleanId.slice(0, 8)})` : cleanId,
-          username: cleanId,
-          avatar: `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80`,
-          bio: 'Discovered via Barcode Scan',
-          followersCount: 10,
-          followingCount: 5,
-          likesCount: 20,
+          name: resolvedName,
+          username: prof?.username || cleanId,
+          avatar: resolvedAvatar,
+          bio: prof?.bio || 'Discovered via Barcode Scan',
+          followersCount: prof?.followersCount ?? 10,
+          followingCount: prof?.followingCount ?? 5,
+          likesCount: prof?.likesCount ?? 20,
         };
         setScannedResult(fallbackUser);
       }

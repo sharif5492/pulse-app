@@ -2,6 +2,7 @@ import React from 'react';
 import { Phone, PhoneOff, Video, Sparkles } from 'lucide-react';
 import { ActiveCallSession } from '../types';
 import { audioUtils } from '../lib/audioUtils';
+import { zg } from '../lib/zegoService';
 
 interface IncomingCallDialogProps {
   session: ActiveCallSession;
@@ -15,6 +16,26 @@ export const IncomingCallDialog: React.FC<IncomingCallDialogProps> = ({
   onReject,
 }) => {
   const isVideo = session.callType === 'video';
+
+  // Do NOT call zg.joinRoom() on component mount.
+  // Only call joinRoom() and startTimer() inside handleAccept() function after user clicks Yes/Accept button.
+  // Keep incoming call ringing until accepted.
+  const handleAccept = async () => {
+    audioUtils.playPop();
+    try {
+      if (zg && typeof zg.joinRoom === 'function') {
+        await zg.joinRoom(session.id);
+      }
+    } catch (err) {
+      console.warn('zg.joinRoom error on accept:', err);
+    }
+    onAccept();
+  };
+
+  const handleReject = () => {
+    audioUtils.playPop();
+    onReject();
+  };
 
   return (
     <div className="fixed top-4 inset-x-4 max-w-md mx-auto z-[60] animate-in slide-in-from-top duration-300">
@@ -48,10 +69,7 @@ export const IncomingCallDialog: React.FC<IncomingCallDialogProps> = ({
         {/* Action Buttons: Accept & Decline */}
         <div className="flex items-center gap-2.5 pt-1">
           <button
-            onClick={() => {
-              audioUtils.playPop();
-              onReject();
-            }}
+            onClick={handleReject}
             className="flex-1 py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 border border-rose-500/30 hover:border-rose-500/60 text-xs font-bold flex items-center justify-center gap-1.5 transition-all"
           >
             <PhoneOff className="w-4 h-4" />
@@ -59,10 +77,7 @@ export const IncomingCallDialog: React.FC<IncomingCallDialogProps> = ({
           </button>
 
           <button
-            onClick={() => {
-              audioUtils.playPop();
-              onAccept();
-            }}
+            onClick={handleAccept}
             className="flex-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-900/40 text-xs font-bold flex items-center justify-center gap-1.5 hover:scale-[1.02] active:scale-95 transition-all"
           >
             {isVideo ? <Video className="w-4 h-4" /> : <Phone className="w-4 h-4" />}

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Radio, Users, Sparkles, Flame, Music, Palette, Gamepad2, MessageSquare, Plus } from 'lucide-react';
+import { Radio, Users, Sparkles, Flame, Music, Palette, Gamepad2, MessageSquare, Plus, Eye } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { LiveRoom } from '../types';
 
@@ -86,8 +86,8 @@ export const LiveRoomsView: React.FC = () => {
                   LIVE
                 </span>
                 <span className="bg-slate-950/70 backdrop-blur-md text-white text-[10px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 border border-white/10">
-                  <Users className="w-3 h-3 text-fuchsia-400" />
-                  {room.viewerCount.toLocaleString()}
+                  <Eye className="w-3 h-3 text-emerald-400" />
+                  {room.viewerCount.toLocaleString()} watching
                 </span>
               </div>
 

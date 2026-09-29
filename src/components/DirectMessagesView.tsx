@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Search, MessageSquarePlus, Circle, CheckCheck, Sparkles, 
   Image, Mic, Zap, Bot, ArrowRight, Radio, UserPlus, QrCode,
@@ -12,6 +12,7 @@ import { ChatRoomView } from './ChatRoomView';
 import { AIChatAssistant } from './AIChatAssistant';
 import { UserStatusBadge } from './UserStatusBadge';
 import { areUserIdsEqual } from '../utils/userIdUtils';
+import { supabase } from '../lib/supabase';
 
 export const DirectMessagesView: React.FC = () => {
   const { 
@@ -41,12 +42,51 @@ export const DirectMessagesView: React.FC = () => {
     .map((c) => (areUserIdsEqual(c.requesterId, currentUserId) ? c.receiver : c.requester))
     .filter((f): f is User => Boolean(f && f.id && !areUserIdsEqual(f.id, currentUserId)));
 
-  const filteredConversations = conversations.filter(
-    (c) =>
-      c.participant.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.participant.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
+  // Real-time friend profile enrichment from Supabase 'profiles' table using friend_id
+  const [friendProfiles, setFriendProfiles] = useState<Record<string, { name: string; avatar: string; username: string }>>({});
+
+  useEffect(() => {
+    if (!supabase) return;
+    const allIds = new Set<string>();
+    acceptedFriends.forEach((f) => { if (f.id) allIds.add(f.id); });
+    conversations.forEach((c) => { if (c.participant.id) allIds.add(c.participant.id); });
+
+    const idList = Array.from(allIds);
+    if (idList.length === 0) return;
+
+    supabase
+      .from('profiles')
+      .select('id, display_name, full_name, name, username, avatar_url, avatar')
+      .in('id', idList)
+      .then(({ data, error }) => {
+        if (!error && data && data.length > 0) {
+          const map: Record<string, { name: string; avatar: string; username: string }> = {};
+          data.forEach((p) => {
+            const realName = p.display_name || p.name || p.full_name || p.username;
+            const realAvatar = p.avatar_url || p.avatar;
+            if (p.id) {
+              map[p.id] = {
+                name: realName,
+                avatar: realAvatar,
+                username: p.username,
+              };
+            }
+          });
+          setFriendProfiles((prev) => ({ ...prev, ...map }));
+        }
+      }, (e) => console.warn('Supabase profiles fetch notice:', e));
+  }, [acceptedFriends.length, conversations.length]);
+
+  const filteredConversations = conversations.filter((c) => {
+    const prof = friendProfiles[c.participant.id];
+    const name = prof?.name || c.participant.name;
+    const username = prof?.username || c.participant.username;
+    return (
+      name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      username.toLowerCase().includes(searchQuery.toLowerCase()) ||
       c.lastMessage.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+    );
+  });
 
   return (
     <div className="w-full max-w-xl mx-auto px-4 py-4 space-y-4 pb-24">
@@ -193,16 +233,23 @@ export const DirectMessagesView: React.FC = () => {
           <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
             {acceptedFriends.map((friend) => {
               const online = isUserOnline(friend.id);
+              const prof = friendProfiles[friend.id];
+              const rawName = prof?.name || friend.name;
+              const displayName = (!rawName || rawName.includes('Pulse User'))
+                ? (prof?.username || friend.username || (friend.id ? `@${friend.id.slice(0, 8)}` : 'Friend'))
+                : rawName;
+              const displayAvatar = prof?.avatar || friend.avatar;
+
               return (
                 <button
                   key={`friend-quick-${friend.id}`}
-                  onClick={() => startChatWithUser(friend)}
+                  onClick={() => startChatWithUser({ ...friend, name: displayName, avatar: displayAvatar })}
                   className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-fuchsia-500/50 transition-all shrink-0 group active:scale-95"
                 >
                   <div className="relative">
                     <img
-                      src={friend.avatar}
-                      alt={friend.name}
+                      src={displayAvatar}
+                      alt={displayName}
                       className="w-8 h-8 rounded-full object-cover border border-slate-700"
                     />
                     <UserStatusBadge
@@ -213,7 +260,7 @@ export const DirectMessagesView: React.FC = () => {
                   </div>
                   <div className="text-left min-w-0 max-w-[110px]">
                     <p className="text-xs font-bold text-white group-hover:text-fuchsia-300 truncate">
-                      {friend.name}
+                      {displayName}
                     </p>
                     <p className="text-[10px] text-emerald-400 flex items-center gap-1">
                       <MessageCircle className="w-2.5 h-2.5" />
@@ -260,16 +307,30 @@ export const DirectMessagesView: React.FC = () => {
         ) : (
           filteredConversations.map((conv, idx) => {
             const online = isUserOnline(conv.participant.id) ?? conv.isOnline;
+            const prof = friendProfiles[conv.participant.id];
+            const rawName = prof?.name || conv.participant.name;
+            const displayName = (!rawName || rawName.includes('Pulse User'))
+              ? (prof?.username || conv.participant.username || (conv.participant.id ? `@${conv.participant.id.slice(0, 8)}` : 'Chat'))
+              : rawName;
+            const displayAvatar = prof?.avatar || conv.participant.avatar;
+
             return (
               <div
                 key={`conv-${conv.id}-${idx}`}
-                onClick={() => openConversation(conv)}
+                onClick={() => openConversation({
+                  ...conv,
+                  participant: {
+                    ...conv.participant,
+                    name: displayName,
+                    avatar: displayAvatar,
+                  },
+                })}
                 className="flex items-center gap-3.5 p-3 rounded-2xl bg-slate-900/60 hover:bg-slate-900 border border-slate-800/80 hover:border-slate-700 transition-all cursor-pointer group"
               >
                 <div className="relative shrink-0">
                   <img
-                    src={conv.participant.avatar}
-                    alt={conv.participant.name}
+                    src={displayAvatar}
+                    alt={displayName}
                     className="w-12 h-12 rounded-full object-cover border border-slate-800"
                   />
                   <UserStatusBadge
@@ -283,7 +344,7 @@ export const DirectMessagesView: React.FC = () => {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
                       <span className="font-bold text-xs text-white group-hover:text-fuchsia-300 transition-colors">
-                        {conv.participant.name}
+                        {displayName}
                       </span>
                       {conv.participant.verified && (
                         <span className="text-[9px] text-fuchsia-400 font-bold">✓</span>

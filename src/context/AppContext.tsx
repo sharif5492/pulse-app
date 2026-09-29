@@ -25,6 +25,7 @@ import {
   markAllNotificationsRead as apiMarkAllNotificationsRead 
 } from '../lib/supabase';
 import { webrtcService } from '../lib/webrtcService';
+import { zg } from '../lib/zegoService';
 import { audioUtils } from '../lib/audioUtils';
 import { areUserIdsEqual, getCanonicalConnectionPairKey, normalizeUserId } from '../utils/userIdUtils';
 import confetti from 'canvas-confetti';
@@ -58,7 +59,7 @@ interface AppContextType {
   openStoryViewer: (index: number) => void;
   closeStoryViewer: () => void;
   markStoryRead: (storyId: string) => void;
-  addStory: (itemUrl: string, caption?: string, audioTrack?: { title: string; artist: string; url?: string; duration?: number }) => void;
+  addStory: (itemUrl: string, caption?: string, audioTrack?: { title: string; artist: string; url?: string; duration?: number }, mediaType?: 'image' | 'video') => void;
   deleteStoryItem?: (itemId: string) => void;
   liveRooms: LiveRoom[];
   activeLiveRoom: LiveRoom | null;
@@ -66,6 +67,7 @@ interface AppContextType {
   closeLiveRoom: () => void;
   liveComments: LiveComment[];
   sendLiveComment: (text: string) => void;
+  clearLiveComments: () => void;
   sendLiveGift: (gift: LiveGift) => boolean;
   floatingHearts: FloatingHeart[];
   triggerLiveHeart: () => void;
@@ -681,7 +683,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 return [conn, ...filtered];
               });
 
-              const senderName = conn.requester?.name || 'Pulse User';
+              const senderName = conn.requester?.name || (conn.requester?.username ? `@${conn.requester.username}` : 'Pulse Member');
               setActiveToast({
                 id: `toast_conn_${Date.now()}`,
                 title: 'New Friend Request! 👥',
@@ -1647,15 +1649,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addStory = async (
     itemUrl: string, 
     caption?: string, 
-    audioTrack?: { title: string; artist: string; url?: string; duration?: number }
+    audioTrack?: { title: string; artist: string; url?: string; duration?: number },
+    mediaType?: 'image' | 'video'
   ) => {
     if (!user || !itemUrl) return;
+    const isVideo = mediaType === 'video' ||
+      itemUrl.toLowerCase().includes('.mp4') ||
+      itemUrl.toLowerCase().includes('video') ||
+      itemUrl.startsWith('data:video');
+
     const newStoryItem: StoryItem = {
       id: `st_item_${Date.now()}`,
-      type: 'image' as const,
+      type: isVideo ? 'video' : 'image',
       url: itemUrl,
-      duration: 5,
-      caption: caption || 'Moments on Pulse ⚡',
+      duration: isVideo ? 15 : 5,
+      caption: caption || (isVideo ? 'Story video on Pulse ⚡' : 'Moments on Pulse ⚡'),
       timestamp: 'Just now',
       audioTrack: audioTrack ? {
         title: audioTrack.title || 'Original Audio',
@@ -1745,12 +1753,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     ]);
   };
 
+  const clearLiveComments = () => {
+    setLiveComments([]);
+  };
+
   const sendLiveGift = (gift: LiveGift): boolean => {
     if (!user) return false;
-    const success = deductCoins(gift.cost);
-    if (!success) return false;
 
-    // Trigger visual confetti & sound
+    // Virtual gifts are free - trigger visual confetti & sound
     try {
       audioUtils.playGiftSent();
       confetti({
@@ -2293,9 +2303,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const currentUserObj: User = user || {
       id: 'usr_current',
-      name: 'Pulse User',
-      username: 'pulse_user',
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+      name: user?.name || user?.username || 'Pulse Member',
+      username: user?.username || 'pulse_user',
+      avatar: user?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
       followersCount: 120,
       followingCount: 50,
       likesCount: 100,
@@ -2306,24 +2316,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (err) {
       console.warn('WebRTC offer initialization error:', err);
     }
-
-    // Auto-answer simulation for instant testing of WebRTC interface
-    if (autoSimulateTimerRef.current) clearTimeout(autoSimulateTimerRef.current);
-    autoSimulateTimerRef.current = setTimeout(() => {
-      setActiveCall((prev) => {
-        if (!prev || prev.status !== 'calling') return prev;
-        if (stopRingtoneRef.current) {
-          stopRingtoneRef.current();
-          stopRingtoneRef.current = null;
-        }
-        audioUtils.playCallConnected();
-        return {
-          ...prev,
-          status: 'connected',
-          startedAt: Date.now(),
-        };
-      });
-    }, 3500);
   };
 
   const acceptCall = async () => {
@@ -2344,6 +2336,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setActiveCall(acceptedSession);
     setIncomingCall(null);
+
+    // Call joinRoom only after user clicks Accept
+    try {
+      if (zg && typeof zg.joinRoom === 'function') {
+        await zg.joinRoom(acceptedSession.id);
+      }
+    } catch (err) {
+      console.warn('zg.joinRoom error on accept:', err);
+    }
 
     try {
       if (incomingOfferRef.current) {
@@ -2502,6 +2503,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         closeLiveRoom,
         liveComments,
         sendLiveComment,
+        clearLiveComments,
         sendLiveGift,
         floatingHearts,
         triggerLiveHeart,

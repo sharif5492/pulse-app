@@ -1,12 +1,11 @@
 import React, { useState, useRef } from 'react';
 import { 
-  Settings, Grid, Heart, Bookmark, Coins, Database, 
+  Settings, Grid, Heart, Bookmark, Database, 
   ShieldCheck, LogOut, Sparkles, Plus, Edit3, Share2, 
   Radio, Play, Camera, Mic, Volume2, Check, RefreshCw,
   BookmarkCheck, Trash2, ExternalLink, ArrowLeft,
   ShieldAlert, UserCheck, Phone, Video, MessageSquare,
-  UserX, UserPlus, Lock, Clock, UserMinus, Upload, Copy, ChevronRight,
-  Wallet, ArrowDownLeft, ArrowUpRight
+  UserX, UserPlus, Lock, Clock, UserMinus, Upload, Copy, ChevronRight
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
@@ -47,10 +46,8 @@ export const ProfileView: React.FC = () => {
     cancelConnectionRequest,
     isUserOnline,
     openUserSearchModal,
-    openCoinsRewardModal,
-    openPaymentWallet,
   } = useApp();
-  const { user, logout, isSupabaseConfigured, openAuthModal, pulseCoins, addCoins, checkinStreak, updateUserProfile } = useAuth();
+  const { user, logout, isSupabaseConfigured, openAuthModal, updateUserProfile } = useAuth();
   const directAvatarInputRef = useRef<HTMLInputElement>(null);
   
   const [activeSubTab, setActiveSubTab] = useState<'reels' | 'liked' | 'saved' | 'audio'>('reels');
@@ -613,25 +610,12 @@ export const ProfileView: React.FC = () => {
                 </button>
               </div>
 
-              {/* Coins Pill & Status Badge & Blocked Quick Badge */}
+              {/* Status Badge & Blocked Quick Badge */}
               <div className="flex items-center gap-2 mt-2 flex-wrap">
                 <div className="flex items-center gap-1.5 bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 px-2.5 py-0.5 rounded-full text-xs font-bold w-fit">
                   <UserStatusBadge isOnline={true} size="xs" />
                   <span>Online (You)</span>
                 </div>
-
-                <button
-                  onClick={() => {
-                    audioUtils.playPop();
-                    openCoinsRewardModal();
-                  }}
-                  className="flex items-center gap-1.5 bg-amber-500/15 border border-amber-500/40 hover:bg-amber-500/25 text-amber-300 px-2.5 py-0.5 rounded-full text-xs font-bold transition-all shadow-sm group w-fit"
-                  title="View Coins & Rewards Wallet"
-                >
-                  <Coins className="w-3.5 h-3.5 text-amber-400 group-hover:rotate-12 transition-transform" />
-                  <span>{pulseCoins.toLocaleString()} Coins</span>
-                  <span className="text-[10px] text-amber-400/80 font-medium">({checkinStreak}d streak 🔥)</span>
-                </button>
 
                 {blockedUserIds.length > 0 && (
                   <button
@@ -732,99 +716,6 @@ export const ProfileView: React.FC = () => {
             </div>
             <span className="text-[10px] text-slate-400 font-medium">Total Likes</span>
           </div>
-        </div>
-      </div>
-
-      {/* Rewards & Daily Coins Hub Banner */}
-      <div 
-        onClick={() => {
-          audioUtils.playPop();
-          openCoinsRewardModal();
-        }}
-        className="rounded-3xl bg-gradient-to-r from-amber-500/15 via-slate-900 to-amber-500/10 border border-amber-500/30 p-4 shadow-xl flex items-center justify-between cursor-pointer hover:border-amber-400/60 transition-all group"
-      >
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-amber-500 via-yellow-400 to-amber-300 flex items-center justify-center text-xl shadow-lg shadow-amber-500/20 group-hover:scale-105 transition-transform">
-            🪙
-          </div>
-          <div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-base font-black text-white tracking-tight">
-                {pulseCoins.toLocaleString()}
-              </span>
-              <span className="text-xs font-bold text-amber-400">Pulse Coins</span>
-            </div>
-            <p className="text-[11px] text-slate-400">
-              Daily Streak: <span className="text-amber-300 font-bold">{checkinStreak} Days 🔥</span> • Earn coins by watching & check-ins
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 group-hover:bg-amber-500 group-hover:text-slate-950 font-black text-xs transition-all shrink-0">
-          <span>Rewards Hub</span>
-          <ChevronRight className="w-3.5 h-3.5" />
-        </div>
-      </div>
-
-      {/* Payment Wallet & Payouts Card (JazzCash, Easypaisa, PayPal, Skrill) */}
-      <div className="rounded-3xl bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900 border border-slate-700/80 p-4 shadow-xl space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center text-slate-950 font-black shadow-md">
-              <Wallet className="w-4 h-4" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-black text-white">Payment & Payout Wallet</h3>
-                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                  Upcoming Update
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-400">
-                JazzCash, Easypaisa, PayPal & Skrill
-              </p>
-            </div>
-          </div>
-
-          <button
-            onClick={() => {
-              audioUtils.playPop();
-              openPaymentWallet('history');
-            }}
-            className="text-[11px] font-bold text-indigo-400 hover:text-indigo-300 transition-colors"
-          >
-            History
-          </button>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2 pt-1">
-          <button
-            onClick={() => {
-              audioUtils.playPop();
-              openPaymentWallet('purchase');
-            }}
-            className="py-2.5 px-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/20 active:scale-95 transition-all"
-          >
-            <ArrowDownLeft className="w-4 h-4 text-emerald-200" />
-            <span>Buy Coins (Upcoming)</span>
-          </button>
-
-          <button
-            onClick={() => {
-              audioUtils.playPop();
-              openPaymentWallet('withdraw');
-            }}
-            className="py-2.5 px-3 rounded-2xl bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-500 hover:to-yellow-500 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 shadow-md shadow-amber-600/20 active:scale-95 transition-all"
-          >
-            <ArrowUpRight className="w-4 h-4 text-slate-950" />
-            <span>Withdraw (Upcoming)</span>
-          </button>
-        </div>
-
-        {/* Notice directly underneath payment method options as requested */}
-        <div className="p-2.5 rounded-2xl bg-amber-950/40 border border-amber-500/30 text-xs text-amber-300 font-semibold flex items-center gap-2">
-          <Clock className="w-4 h-4 text-amber-400 shrink-0" />
-          <span>upcoming update purchase and withdrawal</span>
         </div>
       </div>
 

@@ -3,7 +3,7 @@ import {
   ArrowLeft, Shield, Lock, Bell, Moon, Eye, EyeOff,
   Smartphone, Database, LogOut, Sparkles, Heart, 
   Check, RefreshCw, Volume2, UserCheck, HelpCircle, KeyRound, ChevronRight,
-  ShieldAlert, UserX, Radio, Save, Copy, AlertCircle, CheckCircle2, Server
+  ShieldAlert, UserX, Radio, Save, Copy, AlertCircle, CheckCircle2, Server, Trash2
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
@@ -19,7 +19,7 @@ const ADMIN_EMAIL = 'sharif5492@gmail.com';
 
 export const SettingsView: React.FC<SettingsViewProps> = ({ onReplaySplash }) => {
   const { setActiveTab, blockedUserIds, blockedUsers } = useApp();
-  const { user, logout, isSupabaseConfigured, openAuthModal, pulseCoins, addCoins } = useAuth();
+  const { user, logout, isSupabaseConfigured, openAuthModal } = useAuth();
 
   // Admin access validation: Only allow sharif5492@gmail.com to view & edit Supabase & OneSignal configs
   const currentUserEmail = (
@@ -140,6 +140,51 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onReplaySplash }) =>
       setPasswordFeedback(null);
       setShowPasswordChangeModal(false);
     }, 1500);
+  };
+
+  // Cache & Chat Data Management State & Handler
+  const [cacheClearedMessage, setCacheClearedMessage] = useState<string | null>(null);
+
+  const handleClearCacheAndChat = () => {
+    audioUtils.playPop();
+    try {
+      const keysToRemove = [
+        'pulse_chat_messages',
+        'pulse_chat_threads',
+        'pulse_conversations',
+        'pulse_messages',
+        'pulse_stories',
+        'pulse_stories_cache',
+        'pulse_connections_cache',
+        'pulse_cached_profiles',
+        'pulse_users_cache',
+        'pulse_coins',
+        'pulse_wallet_transactions',
+      ];
+      keysToRemove.forEach((key) => {
+        try {
+          localStorage.removeItem(key);
+        } catch {}
+      });
+
+      // Clear dynamic conversation or chat keys
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k && (k.startsWith('pulse_conn_') || k.startsWith('pulse_chat_') || k.startsWith('pulse_story_'))) {
+          try {
+            localStorage.removeItem(k);
+          } catch {}
+        }
+      }
+
+      setCacheClearedMessage('Local chat cache, messages and stories cache cleared successfully!');
+      setTimeout(() => {
+        setCacheClearedMessage(null);
+      }, 3500);
+    } catch {
+      setCacheClearedMessage('Cache cleared.');
+      setTimeout(() => setCacheClearedMessage(null), 2500);
+    }
   };
 
   return (
@@ -740,7 +785,50 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onReplaySplash }) =>
         </div>
       </div>
 
-      {/* Section 7: Creator Credits & App Info */}
+      {/* Section 7: Storage & Data Management (Clear Chat, Messages & Stories Cache) */}
+      <div className="space-y-3">
+        <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+          <Database className="w-3.5 h-3.5 text-indigo-400" />
+          <span>Storage & Data Management</span>
+        </h2>
+
+        <div className="rounded-2xl bg-slate-900 border border-slate-800 p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <div className="text-xs font-semibold text-white flex items-center gap-1.5">
+                <span>Clear Cache & Chat Data</span>
+                <span className="px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 text-[9px] font-bold">OPTIMIZE</span>
+              </div>
+              <div className="text-[11px] text-slate-400">Clear local chat cache, messages, media history and stories cache</div>
+            </div>
+
+            <button
+              onClick={handleClearCacheAndChat}
+              className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-fuchsia-600 hover:from-indigo-500 hover:to-fuchsia-500 text-white text-xs font-bold shadow-md shadow-indigo-950/40 transition-all active:scale-95 flex items-center gap-1.5 shrink-0"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Clear Cache</span>
+            </button>
+          </div>
+
+          {cacheClearedMessage && (
+            <div className="p-2.5 rounded-xl bg-emerald-950/80 border border-emerald-500/40 text-xs font-semibold text-emerald-300 flex items-center gap-2 animate-in fade-in">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>{cacheClearedMessage}</span>
+            </div>
+          )}
+
+          <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-xs">
+            <span className="text-slate-400">Local Cache Status</span>
+            <span className="text-emerald-400 font-semibold flex items-center gap-1">
+              <Check className="w-3.5 h-3.5" />
+              <span>Clean & Optimized</span>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Section 8: Creator Credits & App Info */}
       <div className="rounded-2xl bg-gradient-to-tr from-slate-900 to-slate-850 border border-fuchsia-500/30 p-4 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">

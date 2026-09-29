@@ -19,9 +19,8 @@ export const ReelsFeed: React.FC = () => {
     toggleBookmarkReel, 
     addReelComment, 
     toggleFollowUser,
-    openCoinsRewardModal,
   } = useApp();
-  const { user, addCoins } = useAuth();
+  const { user } = useAuth();
 
   const [isPlaying, setIsPlaying] = useState(true);
   const [showHeartBurst, setShowHeartBurst] = useState(false);
@@ -31,39 +30,9 @@ export const ReelsFeed: React.FC = () => {
   const [expandedCaption, setExpandedCaption] = useState(false);
   const [audioNotice, setAudioNotice] = useState<string | null>(null);
 
-  // Watch-to-Earn Promotional Coins Engine
-  const [watchSeconds, setWatchSeconds] = useState(0);
-  const watchSecondsRef = useRef(0);
-  const [showCoinPop, setShowCoinPop] = useState(false);
-  const REWARD_INTERVAL = 12; // 12 seconds per 10 coins
-  const progressPercent = Math.min(100, Math.round((watchSeconds / REWARD_INTERVAL) * 100));
-
-  const addCoinsRef = useRef(addCoins);
-  useEffect(() => {
-    addCoinsRef.current = addCoins;
-  }, [addCoins]);
-
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const currentReel = reels[activeReelIndex] || reels[0];
   const [videoError, setVideoError] = useState(false);
-
-  // Active watch timer to award coins continuously during reel watching
-  useEffect(() => {
-    if (!isPlaying) return;
-    const interval = setInterval(() => {
-      watchSecondsRef.current += 1;
-      if (watchSecondsRef.current >= REWARD_INTERVAL) {
-        watchSecondsRef.current = 0;
-        setWatchSeconds(0);
-        addCoinsRef.current(10, 'Reel Watch Reward 🎬');
-        setShowCoinPop(true);
-        setTimeout(() => setShowCoinPop(false), 2000);
-      } else {
-        setWatchSeconds(watchSecondsRef.current);
-      }
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [isPlaying]);
 
   // Touch swipe support for mobile
   const touchStartY = useRef<number | null>(null);
@@ -366,80 +335,6 @@ export const ReelsFeed: React.FC = () => {
           <span className="text-[11px] font-semibold text-white/90 bg-slate-950/60 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10 shadow">
             {activeReelIndex + 1} / {reels.length}
           </span>
-        </div>
-
-        {/* TikTok / SnackVideo Style Floating Coin Progress Wheel */}
-        <div className="absolute top-16 left-3 z-30 flex flex-col items-center">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              openCoinsRewardModal();
-            }}
-            className="relative w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-slate-950/70 backdrop-blur-md border border-amber-500/40 shadow-lg shadow-amber-500/20 flex items-center justify-center group hover:scale-105 active:scale-95 transition-all"
-            title="Watch Reels & Earn Pulse Coins"
-          >
-            {/* Circular SVG progress ring */}
-            <svg className="w-11 h-11 sm:w-12 sm:h-12 -rotate-90 pointer-events-none absolute inset-0">
-              <circle
-                cx="22"
-                cy="22"
-                r="18"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                className="text-white/10 sm:hidden"
-                fill="transparent"
-              />
-              <circle
-                cx="22"
-                cy="22"
-                r="18"
-                stroke="currentColor"
-                strokeWidth="3"
-                strokeDasharray="113.1"
-                strokeDashoffset={113.1 - (113.1 * progressPercent) / 100}
-                strokeLinecap="round"
-                className="text-amber-400 transition-all duration-300 sm:hidden"
-                fill="transparent"
-              />
-              <circle
-                cx="24"
-                cy="24"
-                r="20"
-                stroke="currentColor"
-                strokeWidth="3"
-                className="text-white/10 hidden sm:block"
-                fill="transparent"
-              />
-              <circle
-                cx="24"
-                cy="24"
-                r="20"
-                stroke="currentColor"
-                strokeWidth="3.2"
-                strokeDasharray="125.6"
-                strokeDashoffset={125.6 - (125.6 * progressPercent) / 100}
-                strokeLinecap="round"
-                className="text-amber-400 transition-all duration-300 hidden sm:block"
-                fill="transparent"
-              />
-            </svg>
-
-            {/* Central Rotating Gold Coin */}
-            <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-gradient-to-tr from-amber-500 via-yellow-400 to-amber-300 flex items-center justify-center text-slate-950 font-black text-xs shadow-md">
-              🪙
-            </div>
-            
-            <div className="absolute -bottom-1 px-1.5 py-0.2 rounded-full bg-amber-500 text-slate-950 font-black text-[9px] shadow-sm">
-              +10
-            </div>
-          </button>
-
-          {/* Floating +10 Pop Animation */}
-          {showCoinPop && (
-            <div className="absolute -top-7 left-1/2 -translate-x-1/2 pointer-events-none animate-bounce font-black text-sm text-amber-300 drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)] whitespace-nowrap">
-              +10 🪙
-            </div>
-          )}
         </div>
 
         {/* Floating Mobile/Desktop Up & Down Chevrons */}

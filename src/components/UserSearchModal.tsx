@@ -249,9 +249,10 @@ export const UserSearchModal: React.FC<UserSearchModalProps> = ({
              u.username.toLowerCase() === clean.toLowerCase()
     );
 
-    const targetUser: User = existing || {
+    const found = await usersDiscoveryService.lookupUser(clean);
+    const targetUser: User = existing || found || {
       id: clean,
-      name: clean.length > 12 ? `Pulse User (${clean.slice(0, 8)})` : clean,
+      name: clean,
       username: clean,
       avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
       bio: 'Added via Direct ID Search',
@@ -874,7 +875,7 @@ export const UserSearchModal: React.FC<UserSearchModalProps> = ({
                 incomingRequests.map((req) => {
                   const reqUser: User = req.requester || {
                     id: req.requesterId,
-                    name: 'Pulse User',
+                    name: req.requester?.name || req.requesterId.replace('usr_', '') || 'Pulse Member',
                     username: req.requesterId.replace('usr_', ''),
                     avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
                     followersCount: 10,

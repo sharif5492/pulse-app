@@ -148,13 +148,13 @@ export const AuthModal: React.FC = () => {
 
         {/* Signup Welcome Bonus Banner */}
         {mode === 'signup' && (
-          <div className="mb-4 p-2.5 rounded-xl bg-gradient-to-r from-amber-500/20 via-slate-900 to-amber-500/10 border border-amber-500/40 flex items-center gap-2.5 animate-in fade-in">
-            <div className="w-7 h-7 rounded-lg bg-amber-500 flex items-center justify-center text-slate-950 font-black text-sm shrink-0">
-              🎁
+          <div className="mb-4 p-2.5 rounded-xl bg-gradient-to-r from-fuchsia-500/20 via-slate-900 to-indigo-500/10 border border-fuchsia-500/40 flex items-center gap-2.5 animate-in fade-in">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-fuchsia-600 to-indigo-600 flex items-center justify-center text-white font-black text-sm shrink-0">
+              ✨
             </div>
             <div className="text-[11px] leading-tight">
-              <span className="font-bold text-amber-300">Sign Up Bonus: </span>
-              <span className="text-slate-200">Get <strong className="text-white font-black">+500 Free Coins</strong> instantly to send live gifts and boost your profile!</span>
+              <span className="font-bold text-fuchsia-300">Welcome to Pulse: </span>
+              <span className="text-slate-200">Connect with creators, join live interactive streams, and share HD stories!</span>
             </div>
           </div>
         )}

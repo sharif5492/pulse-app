@@ -54,6 +54,7 @@ export const CreatePostModal: React.FC = () => {
     'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800&auto=format&fit=crop&q=80'
   );
   const [uploadedStoryFile, setUploadedStoryFile] = useState<File | null>(null);
+  const [storyFileType, setStoryFileType] = useState<'image' | 'video'>('image');
 
   // Story Audio state
   const [storyAudioTrack, setStoryAudioTrack] = useState<{
@@ -187,14 +188,12 @@ export const CreatePostModal: React.FC = () => {
     const file = e.target.files?.[0];
     if (file) {
       setUploadedStoryFile(file);
-      // Instant local preview
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        if (event.target?.result) {
-          setSelectedStoryImage(event.target.result as string);
-        }
-      };
-      reader.readAsDataURL(file);
+      const isVideo = file.type.startsWith('video/') || file.name.toLowerCase().endsWith('.mp4');
+      setStoryFileType(isVideo ? 'video' : 'image');
+
+      // Use URL.createObjectURL(file) for instant preview
+      const objectUrl = URL.createObjectURL(file);
+      setSelectedStoryImage(objectUrl);
 
       // Upload to remote storage if connected
       setIsUploading(true);
@@ -209,6 +208,7 @@ export const CreatePostModal: React.FC = () => {
         setIsUploading(false);
       }
     }
+    if (e.target) e.target.value = '';
   };
 
   // Native audio file picker handler for stories (works on mobile & desktop)
@@ -309,14 +309,30 @@ export const CreatePostModal: React.FC = () => {
     }
     setIsAudioPreviewPlaying(false);
 
+    let finalMediaUrl = selectedStoryImage;
+    if (uploadedStoryFile) {
+      setIsUploading(true);
+      try {
+        const storageUrl = await uploadMedia(uploadedStoryFile);
+        if (storageUrl) {
+          finalMediaUrl = storageUrl;
+        }
+      } catch (err) {
+        console.warn('Storage upload error for story:', err);
+      } finally {
+        setIsUploading(false);
+      }
+    }
+
     addStory(
-      selectedStoryImage, 
-      storyCaption || 'Story snapshot on Pulse ⚡',
+      finalMediaUrl, 
+      storyCaption || (storyFileType === 'video' ? 'Story video on Pulse ⚡' : 'Story snapshot on Pulse ⚡'),
       storyAudioTrack ? {
         title: storyAudioTrack.title,
         artist: storyAudioTrack.artist,
         url: storyAudioTrack.url,
-      } : undefined
+      } : undefined,
+      storyFileType
     );
     audioUtils.playSuccess();
     closeCreateModal();
@@ -702,7 +718,7 @@ export const CreatePostModal: React.FC = () => {
               <input
                 ref={storyFileInputRef}
                 type="file"
-                accept="image/*"
+                accept="image/*,video/*"
                 onChange={handleStoryFileChange}
                 className="hidden"
               />
@@ -710,22 +726,52 @@ export const CreatePostModal: React.FC = () => {
               {/* Selected / Uploaded Story Preview Card */}
               {selectedStoryImage ? (
                 <div className="relative rounded-2xl overflow-hidden aspect-[16/9] border border-fuchsia-500/50 bg-slate-950 flex items-center justify-center group shadow-lg shadow-fuchsia-950/40">
-                  <img
-                    src={selectedStoryImage}
-                    alt="Story preview"
-                    className="w-full h-full object-cover"
-                  />
+                  {uploadedStoryFile ? (
+                    uploadedStoryFile.type.startsWith('video/') || uploadedStoryFile.name.toLowerCase().endsWith('.mp4') ? (
+                      <video
+                        src={URL.createObjectURL(uploadedStoryFile)}
+                        controls
+                        autoPlay
+                        muted
+                        loop
+                        playsInline
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <img
+                        src={URL.createObjectURL(uploadedStoryFile)}
+                        alt="Story preview"
+                        className="w-full h-full object-cover"
+                      />
+                    )
+                  ) : (storyFileType === 'video' || selectedStoryImage.toLowerCase().endsWith('.mp4') || selectedStoryImage.includes('video')) ? (
+                    <video
+                      src={selectedStoryImage}
+                      controls
+                      autoPlay
+                      muted
+                      loop
+                      playsInline
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <img
+                      src={selectedStoryImage}
+                      alt="Story preview"
+                      className="w-full h-full object-cover"
+                    />
+                  )}
                   <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-black/30 pointer-events-none" />
                   
                   {/* Status Badges */}
                   <div className="absolute top-2 left-2 flex items-center gap-1.5">
                     <span className="px-2 py-0.5 bg-fuchsia-600/80 backdrop-blur-md text-white text-[10px] font-bold rounded-full flex items-center gap-1">
                       <CheckCircle2 className="w-3 h-3" />
-                      {uploadedStoryFile ? 'Gallery Selected' : 'Snapshot Ready'}
+                      {uploadedStoryFile ? (storyFileType === 'video' ? 'Video Selected' : 'Gallery Selected') : 'Snapshot Ready'}
                     </span>
                   </div>
 
-                  {/* Attached Music badge on image preview if chosen */}
+                  {/* Attached Music badge on preview if chosen */}
                   {storyAudioTrack && (
                     <div className="absolute bottom-2 left-2 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-950/85 backdrop-blur-md border border-fuchsia-500/40 text-white text-[10px]">
                       <Disc className={`w-3.5 h-3.5 text-fuchsia-400 ${isAudioPreviewPlaying ? 'animate-spin' : ''}`} style={{ animationDuration: '3s' }} />
@@ -741,7 +787,7 @@ export const CreatePostModal: React.FC = () => {
                       className="px-2.5 py-1 rounded-xl bg-slate-900/80 backdrop-blur-md hover:bg-slate-800 text-white text-xs font-semibold border border-white/20 transition-all flex items-center gap-1"
                     >
                       <Upload className="w-3 h-3" />
-                      <span>Change Photo</span>
+                      <span>{storyFileType === 'video' ? 'Change Video' : 'Change Media'}</span>
                     </button>
                   </div>
                 </div>
@@ -755,8 +801,8 @@ export const CreatePostModal: React.FC = () => {
                       <Upload className="w-6 h-6" />
                     </div>
                     <div className="text-center">
-                      <p className="text-xs font-semibold text-slate-200">Tap to upload photo from your device</p>
-                      <p className="text-[11px] text-slate-400 mt-0.5">Supports PNG, JPG, WebP</p>
+                      <p className="text-xs font-semibold text-slate-200">Tap to upload photo or video from your device</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">Supports MP4, MOV, PNG, JPG, WebP</p>
                     </div>
                   </div>
                 </div>

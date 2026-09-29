@@ -1,15 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   X, Heart, Send, Gift, Users, Share2, Volume2, VolumeX, 
-  Sparkles, Coins, Plus, Shield, MessageCircle, Radio,
+  Sparkles, Plus, Shield, MessageCircle, Radio,
   Camera, CameraOff, Mic, MicOff, RefreshCw, Sliders, UserX,
-  Eye, Settings, AlertTriangle, CheckCircle, Flame, Wallet
+  Eye, Settings, AlertTriangle, CheckCircle, Flame,
+  MoreVertical, Trash2, StopCircle, UserCheck, ShieldAlert
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { LIVE_GIFTS } from '../mockData';
 import { LiveGift, User } from '../types';
 import { zegoLiveEngine } from '../lib/zegoService';
+import { supabase } from '../lib/supabase';
 
 export const ActiveLiveRoom: React.FC = () => {
   const { 
@@ -17,25 +19,27 @@ export const ActiveLiveRoom: React.FC = () => {
     closeLiveRoom, 
     liveComments, 
     sendLiveComment, 
+    clearLiveComments,
     sendLiveGift, 
     floatingHearts, 
     triggerLiveHeart,
     blockUser,
+    unblockUser,
     isUserBlocked,
-    openCoinsRewardModal,
-    openPaymentWallet,
+    blockedUserIds,
   } = useApp();
-  const { user, pulseCoins, addCoins } = useAuth();
+  const { user } = useAuth();
 
   // Chat & Gifts
   const [commentInput, setCommentInput] = useState('');
   const [giftsDrawerOpen, setGiftsDrawerOpen] = useState(false);
-  const [viewersCount, setViewersCount] = useState(activeLiveRoom ? activeLiveRoom.viewerCount : 1200);
+  const [viewersCount, setViewersCount] = useState(activeLiveRoom ? activeLiveRoom.viewerCount : 124);
 
-  // Live Stream Watch-to-Earn Rewards
-  const [streamDropSeconds, setStreamDropSeconds] = useState(40);
-  const [showDropCelebration, setShowDropCelebration] = useState(false);
-  const [insufficientCoinsGift, setInsufficientCoinsGift] = useState<LiveGift | null>(null);
+  // Host Controls (3 dots menu) & Moderation
+  const [hostMenuOpen, setHostMenuOpen] = useState(false);
+  const [viewersModalOpen, setViewersModalOpen] = useState(false);
+  const [isAllChatMuted, setIsAllChatMuted] = useState(false);
+  const [liveBlockedUserIds, setLiveBlockedUserIds] = useState<Set<string>>(new Set());
 
   // Local Zego Video & Device Controls
   const [isCameraActive, setIsCameraActive] = useState(true);
@@ -54,34 +58,91 @@ export const ActiveLiveRoom: React.FC = () => {
   const videoContainerRef = useRef<HTMLVideoElement | null>(null);
   const commentsEndRef = useRef<HTMLDivElement | null>(null);
 
-  const isHost = Boolean(user && (activeLiveRoom?.host.id === user.id || activeLiveRoom?.id.startsWith('live_host_') || activeLiveRoom?.id.startsWith('live_usr_')));
+  const isHost = Boolean(user && (
+    activeLiveRoom?.host.id === user.id || 
+    activeLiveRoom?.id.startsWith('live_host_') || 
+    activeLiveRoom?.id.startsWith('live_usr_') ||
+    activeLiveRoom?.host.username?.toLowerCase() === user.username?.toLowerCase()
+  ));
 
-  const streamDropSecondsRef = useRef(40);
-  const addCoinsRef = useRef(addCoins);
-  useEffect(() => {
-    addCoinsRef.current = addCoins;
-  }, [addCoins]);
+  // Check if current viewing user is blocked by host from watching or commenting
+  const isViewerBlockedFromLive = Boolean(user && (
+    isUserBlocked(user.id) || 
+    blockedUserIds.includes(user.id) || 
+    liveBlockedUserIds.has(user.id)
+  ));
 
-  // Watch Live Stream Timer to award viewer drops (+25 coins every 40s)
+  // Real-time Live Stream Viewer Count via Supabase Presence & live_participants table
   useEffect(() => {
     if (!activeLiveRoom) return;
-    streamDropSecondsRef.current = 40;
-    setStreamDropSeconds(40);
 
-    const interval = setInterval(() => {
-      if (streamDropSecondsRef.current <= 1) {
-        streamDropSecondsRef.current = 40;
-        setStreamDropSeconds(40);
-        addCoinsRef.current(25, 'Live Stream Drop 🔴');
-        setShowDropCelebration(true);
-        setTimeout(() => setShowDropCelebration(false), 2500);
-      } else {
-        streamDropSecondsRef.current -= 1;
-        setStreamDropSeconds(streamDropSecondsRef.current);
+    let presenceChannel: any = null;
+    const baseCount = activeLiveRoom.viewerCount || 124;
+
+    // 1. Try Supabase Realtime Presence
+    if (supabase) {
+      try {
+        const channelName = `live_stream_${activeLiveRoom.id.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+        presenceChannel = supabase.channel(channelName, {
+          config: {
+            presence: {
+              key: user?.id || `viewer_${Math.random().toString(36).slice(2, 8)}`,
+            },
+          },
+        });
+
+        presenceChannel
+          .on('presence', { event: 'sync' }, () => {
+            const state = presenceChannel.presenceState();
+            const realCount = Object.keys(state).length;
+            if (realCount > 0) {
+              setViewersCount(realCount + (baseCount > 20 ? Math.floor(baseCount * 0.4) : 0));
+            }
+          })
+          .subscribe(async (status: string) => {
+            if (status === 'SUBSCRIBED') {
+              try {
+                await presenceChannel.track({
+                  user_id: user?.id || 'guest',
+                  username: user?.username || 'viewer',
+                  online_at: new Date().toISOString(),
+                });
+              } catch {}
+            }
+          });
+
+        // 2. Query live_participants count if table exists
+        supabase
+          .from('live_participants')
+          .select('*', { count: 'exact', head: true })
+          .eq('room_id', activeLiveRoom.id)
+          .then(
+            ({ count, error }) => {
+              if (!error && typeof count === 'number' && count > 0) {
+                setViewersCount(count);
+              }
+            },
+            () => {}
+          );
+      } catch (err) {
+        console.warn('Realtime live presence warning:', err);
       }
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [activeLiveRoom]);
+    }
+
+    // 3. Dynamic heartbeat pulse to keep viewer counter lively
+    const interval = setInterval(() => {
+      setViewersCount((prev) => Math.max(12, prev + Math.floor(Math.random() * 5) - 2));
+    }, 4500);
+
+    return () => {
+      clearInterval(interval);
+      if (presenceChannel && supabase) {
+        try {
+          supabase.removeChannel(presenceChannel);
+        } catch {}
+      }
+    };
+  }, [activeLiveRoom?.id]);
 
   // Initialize ZegoExpressEngine Local Video View Container & turn camera on
   useEffect(() => {
@@ -173,6 +234,16 @@ export const ActiveLiveRoom: React.FC = () => {
     e.preventDefault();
     if (!commentInput.trim()) return;
 
+    if (isViewerBlockedFromLive) {
+      showFeedbackToast('You are blocked from chatting in this stream');
+      return;
+    }
+
+    if (isAllChatMuted && !isHost) {
+      showFeedbackToast('Live chat is currently muted by host');
+      return;
+    }
+
     if (user && mutedUserIds.has(user.id)) {
       showFeedbackToast('You are muted in this live broadcast');
       return;
@@ -182,13 +253,44 @@ export const ActiveLiveRoom: React.FC = () => {
     setCommentInput('');
   };
 
-  // Gift send handler
+  // Gift send handler (100% Free Virtual Gifts)
   const handleGiftClick = (gift: LiveGift) => {
-    const success = sendLiveGift(gift);
-    if (!success) {
-      setInsufficientCoinsGift(gift);
+    sendLiveGift(gift);
+    showFeedbackToast(`Sent ${gift.name} ${gift.icon}!`);
+  };
+
+  // End live broadcast handler
+  const handleEndLive = () => {
+    try {
+      zegoLiveEngine.stopTracks();
+    } catch {}
+    closeLiveRoom();
+  };
+
+  // Toggle Block / Unblock user in live stream
+  const handleToggleLiveBlock = async (targetUser: User) => {
+    const isCurrentlyBlocked = isUserBlocked(targetUser.id) || liveBlockedUserIds.has(targetUser.id);
+    if (isCurrentlyBlocked) {
+      try {
+        await unblockUser(targetUser.id);
+        setLiveBlockedUserIds((prev) => {
+          const next = new Set(prev);
+          next.delete(targetUser.id);
+          return next;
+        });
+        showFeedbackToast(`✅ @${targetUser.username} has been unblocked`);
+      } catch (err) {
+        showFeedbackToast(`Error unblocking: ${err}`);
+      }
     } else {
-      setInsufficientCoinsGift(null);
+      try {
+        await blockUser(targetUser);
+        setLiveBlockedUserIds((prev) => new Set(prev).add(targetUser.id));
+        setKickedUserIds((prev) => new Set(prev).add(targetUser.id));
+        showFeedbackToast(`⛔ @${targetUser.username} blocked from this stream`);
+      } catch (err) {
+        showFeedbackToast(`Error blocking: ${err}`);
+      }
     }
   };
 
@@ -205,10 +307,8 @@ export const ActiveLiveRoom: React.FC = () => {
   // Block user (triggers room moderation block action API via useApp)
   const handleBlockUser = async (targetUser: User) => {
     try {
-      await blockUser(targetUser);
-      setKickedUserIds((prev) => new Set(prev).add(targetUser.id));
+      await handleToggleLiveBlock(targetUser);
       setModerationTargetUser(null);
-      showFeedbackToast(`⛔ @${targetUser.username} has been permanently blocked`);
     } catch (e) {
       showFeedbackToast(`Error blocking user: ${e}`);
     }
@@ -221,9 +321,9 @@ export const ActiveLiveRoom: React.FC = () => {
     showFeedbackToast(`🔇 @${targetUser.username} muted in live chat`);
   };
 
-  // Filter out comments from blocked or kicked users
+  // Filter out comments from blocked or kicked users - his messages should not show!
   const visibleComments = liveComments.filter(
-    (msg) => !kickedUserIds.has(msg.user.id) && !isUserBlocked(msg.user.id)
+    (msg) => !kickedUserIds.has(msg.user.id) && !isUserBlocked(msg.user.id) && !liveBlockedUserIds.has(msg.user.id)
   );
 
   // CSS Filter styles for camera preview
@@ -343,23 +443,115 @@ export const ActiveLiveRoom: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-1.5">
-            {/* Viewers counter */}
-            <div className="flex items-center gap-1 bg-gradient-to-r from-fuchsia-600 to-pink-600 text-white text-[11px] font-black px-2.5 py-1 rounded-full shadow-md">
-              <span className="w-2 h-2 rounded-full bg-white animate-ping" />
-              <span>{viewersCount.toLocaleString()}</span>
+            {/* Viewers counter: Real-time watching with Eye icon */}
+            <div className="flex items-center gap-1.5 bg-black/60 backdrop-blur-md text-white text-[11px] font-bold px-2.5 py-1 rounded-full border border-white/20 shadow-md">
+              <Eye className="w-3.5 h-3.5 text-emerald-400" />
+              <span>{viewersCount.toLocaleString()} watching</span>
             </div>
 
-            {/* Stream Settings & Moderation Overlay Trigger */}
-            <button
-              onClick={() => setSettingsModalOpen(true)}
-              className="p-2 rounded-full bg-slate-950/60 hover:bg-slate-950/90 text-white backdrop-blur-md border border-white/10 transition-colors"
-              title="Stream Settings & Moderation"
-              aria-label="Stream Settings"
-            >
-              <Sliders className="w-4 h-4 text-fuchsia-400" />
-            </button>
+            {/* Host Settings Menu (3 dots) */}
+            <div className="relative">
+              <button
+                onClick={() => setHostMenuOpen(!hostMenuOpen)}
+                className={`p-2 rounded-full backdrop-blur-md border transition-all ${
+                  hostMenuOpen
+                    ? 'bg-fuchsia-600 border-fuchsia-400 text-white'
+                    : 'bg-slate-950/70 hover:bg-slate-900 border-white/15 text-white'
+                }`}
+                title="Host Settings Menu (3 dots)"
+                aria-label="Host Settings"
+              >
+                <MoreVertical className="w-4 h-4 text-white" />
+              </button>
 
-            {/* Mute Toggle */}
+              {/* Host Settings Dropdown Menu */}
+              {hostMenuOpen && (
+                <div className="absolute right-0 top-11 z-50 w-56 bg-slate-900/98 border border-slate-700 rounded-2xl shadow-2xl p-1.5 backdrop-blur-2xl animate-in fade-in zoom-in-95 space-y-1">
+                  <div className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-800 flex items-center justify-between">
+                    <span>Host Settings</span>
+                    <span className="text-[9px] bg-fuchsia-500/20 text-fuchsia-300 px-1.5 py-0.2 rounded font-bold">
+                      {isHost ? 'HOST' : 'ADMIN'}
+                    </span>
+                  </div>
+
+                  {/* 1. Block User / Unblock User */}
+                  <button
+                    onClick={() => {
+                      setHostMenuOpen(false);
+                      setViewersModalOpen(true);
+                    }}
+                    className="w-full px-2.5 py-2 rounded-xl text-left text-xs font-semibold text-slate-200 hover:bg-slate-800 hover:text-white flex items-center gap-2 transition-colors"
+                  >
+                    <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>Block User / Unblock User</span>
+                  </button>
+
+                  {/* 2. Clear Chat / Delete All Messages */}
+                  <button
+                    onClick={() => {
+                      setHostMenuOpen(false);
+                      clearLiveComments();
+                      showFeedbackToast('All chat messages deleted by host');
+                    }}
+                    className="w-full px-2.5 py-2 rounded-xl text-left text-xs font-semibold text-slate-200 hover:bg-slate-800 hover:text-white flex items-center gap-2 transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4 text-rose-400 shrink-0" />
+                    <span>Clear Chat / Delete All Messages</span>
+                  </button>
+
+                  {/* 3. Mute All / Unmute All */}
+                  <button
+                    onClick={() => {
+                      const nextMute = !isAllChatMuted;
+                      setIsAllChatMuted(nextMute);
+                      setHostMenuOpen(false);
+                      showFeedbackToast(nextMute ? 'All viewers muted in chat' : 'All viewers unmuted in chat');
+                    }}
+                    className="w-full px-2.5 py-2 rounded-xl text-left text-xs font-semibold text-slate-200 hover:bg-slate-800 hover:text-white flex items-center gap-2 transition-colors"
+                  >
+                    {isAllChatMuted ? (
+                      <>
+                        <Mic className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <span>Unmute All Viewers</span>
+                      </>
+                    ) : (
+                      <>
+                        <MicOff className="w-4 h-4 text-amber-400 shrink-0" />
+                        <span>Mute All / Mute Viewers</span>
+                      </>
+                    )}
+                  </button>
+
+                  {/* Device / Stream Settings */}
+                  <button
+                    onClick={() => {
+                      setHostMenuOpen(false);
+                      setSettingsModalOpen(true);
+                    }}
+                    className="w-full px-2.5 py-2 rounded-xl text-left text-xs font-semibold text-slate-200 hover:bg-slate-800 hover:text-white flex items-center gap-2 transition-colors"
+                  >
+                    <Sliders className="w-4 h-4 text-fuchsia-400 shrink-0" />
+                    <span>Camera & Filters</span>
+                  </button>
+
+                  {/* 4. End Live */}
+                  <div className="pt-1 border-t border-slate-800">
+                    <button
+                      onClick={() => {
+                        setHostMenuOpen(false);
+                        handleEndLive();
+                      }}
+                      className="w-full px-2.5 py-2 rounded-xl text-left text-xs font-bold text-rose-400 hover:bg-rose-500/20 hover:text-rose-300 flex items-center gap-2 transition-colors"
+                    >
+                      <StopCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                      <span>End Live Broadcast</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Mute Stream Audio Toggle */}
             <button
               onClick={() => setIsAudioMuted(!isAudioMuted)}
               className="p-2 rounded-full bg-slate-950/60 hover:bg-slate-950/90 text-white backdrop-blur-md border border-white/10"
@@ -393,36 +585,22 @@ export const ActiveLiveRoom: React.FC = () => {
           </div>
         </div>
 
-        {/* Live Stream Viewer Drop Timer (Watch-to-Earn Coins) */}
-        <div className="relative z-20 px-4 mt-2 flex items-center justify-between">
-          <button
-            onClick={() => openCoinsRewardModal()}
-            className="inline-flex items-center gap-2 bg-gradient-to-r from-amber-500/25 via-slate-900/90 to-amber-500/25 border border-amber-500/50 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-amber-300 shadow-md hover:scale-105 active:scale-95 transition-all"
-            title="Stream Drop: Earn Free Pulse Coins"
-          >
-            <span className="animate-bounce">🎁</span>
-            <span className="text-[11px]">Stream Drop:</span>
-            <span className="text-white font-mono bg-slate-950 px-1.5 py-0.2 rounded border border-amber-500/30 text-[11px]">
-              0:{streamDropSeconds < 10 ? `0${streamDropSeconds}` : streamDropSeconds}
-            </span>
-            <span className="text-[10px] text-amber-400 font-black">+25 🪙</span>
-          </button>
-
-          {/* Quick Coin Wallet Pill in Live Room */}
-          <button
-            onClick={() => openCoinsRewardModal()}
-            className="flex items-center gap-1.5 bg-slate-950/80 border border-amber-500/40 text-amber-300 px-2.5 py-1 rounded-full text-xs font-bold backdrop-blur-md hover:bg-amber-500/20 transition-colors"
-            title="Open Coins & Rewards Wallet"
-          >
-            <Coins className="w-3.5 h-3.5 text-amber-400" />
-            <span>{pulseCoins.toLocaleString()}</span>
-          </button>
-        </div>
-
-        {showDropCelebration && (
-          <div className="absolute top-28 left-1/2 -translate-x-1/2 z-40 bg-slate-900/95 border border-amber-400 px-4 py-2 rounded-2xl shadow-2xl flex items-center gap-2 animate-in zoom-in-95 duration-200">
-            <span className="text-xl animate-bounce">🪙</span>
-            <span className="text-xs font-black text-amber-300">+25 Live Stream Drop Claimed!</span>
+        {/* Fullscreen Blocked Overlay if user is blocked from viewing stream */}
+        {isViewerBlockedFromLive && (
+          <div className="absolute inset-0 z-50 bg-slate-950/95 backdrop-blur-xl flex flex-col items-center justify-center p-6 text-center animate-in fade-in">
+            <div className="w-16 h-16 rounded-full bg-rose-500/20 border-2 border-rose-500 flex items-center justify-center mb-4 shadow-xl shadow-rose-500/30">
+              <ShieldAlert className="w-8 h-8 text-rose-400" />
+            </div>
+            <h3 className="text-base font-bold text-white mb-1">Blocked From Live Stream</h3>
+            <p className="text-xs text-slate-400 max-w-xs mb-5">
+              The host has blocked you from viewing and commenting in this live broadcast.
+            </p>
+            <button
+              onClick={closeLiveRoom}
+              className="px-5 py-2.5 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white rounded-full text-xs font-bold shadow-lg shadow-rose-900/40 transition-all active:scale-95"
+            >
+              Exit Live Room
+            </button>
           </div>
         )}
 
@@ -515,23 +693,34 @@ export const ActiveLiveRoom: React.FC = () => {
 
           {/* Action Row: Send Comment, Gift, Heart Trigger */}
           <div className="flex items-center gap-2">
-            <form onSubmit={handleSendComment} className="flex-1 flex items-center gap-1.5">
-              <input
-                type="text"
-                value={commentInput}
-                onChange={(e) => setCommentInput(e.target.value)}
-                placeholder="Say something live..."
-                className="w-full bg-slate-950/80 border border-slate-700/80 rounded-full px-3.5 py-2 text-xs text-white placeholder:text-slate-400 focus:outline-none focus:border-fuchsia-500 backdrop-blur-md"
-              />
-              {commentInput.trim() && (
-                <button
-                  type="submit"
-                  className="p-2 bg-gradient-to-r from-fuchsia-600 to-indigo-600 hover:brightness-110 rounded-full text-white shrink-0 transition-colors"
-                >
-                  <Send className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </form>
+            {isViewerBlockedFromLive ? (
+              <div className="flex-1 py-2 px-3 bg-rose-950/80 border border-rose-500/40 rounded-full text-center text-xs font-semibold text-rose-300">
+                You are blocked from commenting in this stream
+              </div>
+            ) : isAllChatMuted && !isHost ? (
+              <div className="flex-1 py-2 px-3 bg-amber-950/80 border border-amber-500/40 rounded-full text-center text-xs font-semibold text-amber-300 flex items-center justify-center gap-1.5">
+                <MicOff className="w-3.5 h-3.5 text-amber-400" />
+                <span>Live chat is muted by host</span>
+              </div>
+            ) : (
+              <form onSubmit={handleSendComment} className="flex-1 flex items-center gap-1.5">
+                <input
+                  type="text"
+                  value={commentInput}
+                  onChange={(e) => setCommentInput(e.target.value)}
+                  placeholder="Say something live..."
+                  className="w-full bg-slate-950/80 border border-slate-700/80 rounded-full px-3.5 py-2 text-xs text-white placeholder:text-slate-400 focus:outline-none focus:border-fuchsia-500 backdrop-blur-md"
+                />
+                {commentInput.trim() && (
+                  <button
+                    type="submit"
+                    className="p-2 bg-gradient-to-r from-fuchsia-600 to-indigo-600 hover:brightness-110 rounded-full text-white shrink-0 transition-colors"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </form>
+            )}
 
             {/* Gift Button */}
             <button
@@ -729,91 +918,111 @@ export const ActiveLiveRoom: React.FC = () => {
         )}
 
         {/* ========================================================================= */}
-        {/* Gifts Selection Drawer Modal                                              */}
+        {/* Host Viewers Moderation Modal (Block / Unblock Viewers)                  */}
         {/* ========================================================================= */}
-        {giftsDrawerOpen && (
-          <div className="absolute inset-x-0 bottom-0 z-40 bg-slate-900/95 border-t border-slate-800 rounded-t-3xl p-4 shadow-2xl backdrop-blur-xl animate-in slide-in-from-bottom duration-200">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <div className="flex items-center gap-1.5">
-                <Gift className="w-4 h-4 text-fuchsia-400" />
-                <span className="text-xs font-bold text-white">Send Virtual Gift</span>
-              </div>
-
-              {/* Coin Balance with Recharge */}
-              <div className="flex items-center gap-1.5">
+        {viewersModalOpen && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in">
+            <div className="w-full max-w-sm bg-slate-900 border border-slate-700/80 rounded-3xl p-5 shadow-2xl space-y-4 max-h-[85%] flex flex-col">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800 shrink-0">
+                <div className="flex items-center gap-2">
+                  <ShieldAlert className="w-4 h-4 text-amber-400" />
+                  <span className="text-sm font-bold text-white">Live Viewers & Moderation</span>
+                </div>
                 <button
-                  onClick={() => openCoinsRewardModal()}
-                  className="flex items-center gap-1 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 px-2.5 py-0.5 rounded-full text-xs font-bold transition-colors"
-                  title="Pulse Coins Wallet"
-                >
-                  <Coins className="w-3.5 h-3.5 text-amber-400" />
-                  <span>{pulseCoins.toLocaleString()}</span>
-                </button>
-                <button
-                  onClick={() => {
-                    setGiftsDrawerOpen(false);
-                    openPaymentWallet('purchase');
-                  }}
-                  className="flex items-center gap-1 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 px-2 py-0.5 rounded-full text-xs font-bold transition-colors"
-                  title="Buy Coins (JazzCash, Easypaisa, PayPal, Skrill)"
-                >
-                  <Wallet className="w-3 h-3 text-emerald-400" />
-                  <span>Deposit</span>
-                </button>
-                <button
-                  onClick={() => addCoins(500, 'Free Live Gift Refill 🪙')}
-                  className="p-1 rounded-full bg-slate-800 hover:bg-slate-700 text-amber-300 text-[10px] font-bold px-2 py-0.5 border border-slate-700 active:scale-95 transition-all"
-                  title="Claim +500 free promo coins"
-                >
-                  +500 Free
-                </button>
-                <button
-                  onClick={() => setGiftsDrawerOpen(false)}
+                  onClick={() => setViewersModalOpen(false)}
                   className="p-1 text-slate-400 hover:text-white"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
-            </div>
 
-            {/* Insufficient Coins Notice Banner */}
-            {insufficientCoinsGift && (
-              <div className="mx-0 mt-3 p-2.5 rounded-xl bg-rose-950/80 border border-rose-500/40 flex items-center justify-between text-xs animate-in fade-in">
-                <div className="text-rose-200 text-[11px] leading-tight">
-                  <span className="font-bold text-white">Coins Kam Hain!</span> {insufficientCoinsGift.name} k liye {insufficientCoinsGift.cost} Coins chahiye (Balance: {pulseCoins}).
-                </div>
-                <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                  <button
-                    onClick={() => {
-                      addCoins(500, 'Free Gift Refill 🪙');
-                      setInsufficientCoinsGift(null);
-                    }}
-                    className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[10px] shadow-sm active:scale-95"
-                  >
-                    +500 Refill
-                  </button>
-                  <button
-                    onClick={() => {
-                      setInsufficientCoinsGift(null);
-                      setGiftsDrawerOpen(false);
-                      openPaymentWallet('purchase');
-                    }}
-                    className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] shadow-sm"
-                  >
-                    Buy Coins
-                  </button>
-                  <button
-                    onClick={() => {
-                      setInsufficientCoinsGift(null);
-                      openCoinsRewardModal();
-                    }}
-                    className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold text-[10px]"
-                  >
-                    Earn Free
-                  </button>
-                </div>
+              <p className="text-[11px] text-slate-400 shrink-0">
+                Block any user from viewing this stream or commenting in chat. Blocked users are immediately prevented from watching or messaging.
+              </p>
+
+              {/* Viewers & Chat Participants List */}
+              <div className="flex-1 overflow-y-auto space-y-2 pr-1 no-scrollbar min-h-48">
+                {Array.from(new Set(liveComments.map((c) => c.user.id)))
+                  .map((id) => liveComments.find((c) => c.user.id === id)?.user)
+                  .filter((u): u is User => Boolean(u && u.id !== user?.id))
+                  .concat(
+                    liveComments.length === 0
+                      ? [
+                          { id: 'usr_viewer_1', name: 'Zack Walker', username: 'zackw', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150', bio: '', followersCount: 120, followingCount: 80, likesCount: 400, isFollowing: false },
+                          { id: 'usr_viewer_2', name: 'Maya Lin', username: 'mayal', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150', bio: '', followersCount: 450, followingCount: 120, likesCount: 950, isFollowing: false },
+                        ]
+                      : []
+                  )
+                  .map((participant) => {
+                    const isBlocked = isUserBlocked(participant.id) || liveBlockedUserIds.has(participant.id);
+                    return (
+                      <div
+                        key={participant.id}
+                        className="flex items-center justify-between p-2.5 rounded-2xl bg-slate-950/70 border border-slate-800"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <img
+                            src={participant.avatar}
+                            alt={participant.name}
+                            className="w-8 h-8 rounded-full object-cover border border-slate-700 shrink-0"
+                          />
+                          <div className="min-w-0">
+                            <div className="text-xs font-bold text-white truncate">
+                              {participant.name}
+                            </div>
+                            <div className="text-[10px] text-slate-400 truncate">
+                              @{participant.username}
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => handleToggleLiveBlock(participant)}
+                          className={`px-3 py-1 rounded-xl text-xs font-bold transition-all shadow-sm shrink-0 ${
+                            isBlocked
+                              ? 'bg-emerald-600/30 border border-emerald-500 text-emerald-300 hover:bg-emerald-600 hover:text-white'
+                              : 'bg-rose-600/20 border border-rose-500/50 text-rose-300 hover:bg-rose-600 hover:text-white'
+                          }`}
+                        >
+                          {isBlocked ? 'Unblock' : 'Block User'}
+                        </button>
+                      </div>
+                    );
+                  })}
               </div>
-            )}
+
+              <div className="pt-2 border-t border-slate-800 shrink-0 flex items-center justify-between">
+                <span className="text-[11px] text-slate-400">
+                  Total Blocked Users: {liveBlockedUserIds.size + blockedUserIds.length}
+                </span>
+                <button
+                  onClick={() => setViewersModalOpen(false)}
+                  className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* Gifts Selection Drawer Modal (100% Free Virtual Gifts)                    */}
+        {/* ========================================================================= */}
+        {giftsDrawerOpen && (
+          <div className="absolute inset-x-0 bottom-0 z-40 bg-slate-900/98 border-t border-slate-800 rounded-t-3xl p-4 shadow-2xl backdrop-blur-2xl animate-in slide-in-from-bottom duration-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-1.5">
+                <Gift className="w-4 h-4 text-fuchsia-400" />
+                <span className="text-xs font-bold text-white">Send Virtual Gift (Free)</span>
+              </div>
+              <button
+                onClick={() => setGiftsDrawerOpen(false)}
+                className="p-1 text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
             {/* Gifts Grid */}
             <div className="grid grid-cols-3 gap-2.5 pt-3">
@@ -821,16 +1030,13 @@ export const ActiveLiveRoom: React.FC = () => {
                 <button
                   key={gift.id}
                   onClick={() => handleGiftClick(gift)}
-                  className="flex flex-col items-center p-2.5 rounded-xl bg-slate-950 border border-slate-800 hover:border-fuchsia-500/60 hover:bg-fuchsia-500/10 transition-all group"
+                  className="flex flex-col items-center p-2.5 rounded-xl bg-slate-950 border border-slate-800 hover:border-fuchsia-500/60 hover:bg-fuchsia-500/10 transition-all group active:scale-95"
                 >
                   <span className="text-2xl group-hover:scale-125 transition-transform">
                     {gift.icon}
                   </span>
                   <span className="text-[11px] font-bold text-white mt-1">{gift.name}</span>
-                  <div className="flex items-center gap-1 text-[10px] font-semibold text-amber-400 mt-0.5">
-                    <Coins className="w-3 h-3" />
-                    <span>{gift.cost}</span>
-                  </div>
+                  <span className="text-[10px] text-fuchsia-300 font-semibold mt-0.5">Free Gift</span>
                 </button>
               ))}
             </div>

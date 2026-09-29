@@ -175,7 +175,18 @@ export const StoryViewer: React.FC = () => {
     closeStoryViewer();
   };
 
-  const isVideo = currentItem.type === 'video' || currentItem.url.includes('.mp4') || currentItem.url.includes('mixkit');
+  const isVideo = Boolean(
+    currentItem && (
+      currentItem.type === 'video' ||
+      (typeof currentItem.url === 'string' && (
+        currentItem.url.toLowerCase().endsWith('.mp4') ||
+        currentItem.url.toLowerCase().includes('.mp4') ||
+        currentItem.url.toLowerCase().includes('video') ||
+        currentItem.url.startsWith('data:video') ||
+        currentItem.url.includes('mixkit')
+      ))
+    )
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/95 backdrop-blur-xl animate-in fade-in duration-150">
