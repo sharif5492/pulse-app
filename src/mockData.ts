@@ -441,23 +441,6 @@ export const MOCK_NOTIFICATIONS: NotificationItem[] = [
     connectionStatus: 'pending',
   },
   {
-    id: 'notif_1',
-    type: 'live',
-    actor: MOCK_USERS[2],
-    text: 'started a live broadcast: "🎧 Live Modular Jam & Q&A"',
-    targetLiveId: 'live_1',
-    timestamp: '10m ago',
-    isRead: false,
-  },
-  {
-    id: 'notif_2',
-    type: 'gift',
-    actor: MOCK_USERS[1],
-    text: 'sent you a Supernova 🚀 gift in your live room!',
-    timestamp: '35m ago',
-    isRead: false,
-  },
-  {
     id: 'notif_3',
     type: 'like',
     actor: MOCK_USERS[3],

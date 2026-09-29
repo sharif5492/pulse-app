@@ -68,6 +68,7 @@ interface AppContextType {
   liveComments: LiveComment[];
   sendLiveComment: (text: string) => void;
   clearLiveComments: () => void;
+  addIncomingLiveComment: (comment: LiveComment) => void;
   sendLiveGift: (gift: LiveGift) => boolean;
   floatingHearts: FloatingHeart[];
   triggerLiveHeart: () => void;
@@ -1409,76 +1410,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return await uploadMediaToStorage(file, 'media_uploads');
   };
 
-  // Simulated live interaction ticker when inside a live room
+  // Live room lifecycle - clear comments on room switch, strictly real comments only
   useEffect(() => {
-    if (!activeLiveRoom) return;
-
-    // Seed initial live comments
-    setLiveComments([
-      {
-        id: 'lc_1',
-        user: { id: 'u_p1', name: 'Riku Tanaka', username: 'riku_t', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&auto=format&fit=crop&q=80', followersCount: 10, followingCount: 20, likesCount: 50 },
-        text: 'The visual transitions are looking so clean tonight! 🔥',
-        timestamp: 'Just now',
-      },
-      {
-        id: 'lc_2',
-        user: { id: 'u_p2', name: 'Zoe Vance', username: 'zoev', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&auto=format&fit=crop&q=80', followersCount: 10, followingCount: 20, likesCount: 50 },
-        text: 'What audio DAW are you using for the live sync?',
-        timestamp: 'Just now',
-      },
-    ]);
-
-    // Interval to spawn incoming chatter and hearts
-    const interval = setInterval(() => {
-      const mockChatters = [
-        { name: 'Leo Gomez', text: 'Insane audio design! 🎛️', avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80' },
-        { name: 'Hana Mori', text: 'Greetings from Shibuya! 🇯🇵', avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=100&auto=format&fit=crop&q=80' },
-        { name: 'Liam Wilson', text: 'Dropping hearts! ❤️❤️❤️', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&auto=format&fit=crop&q=80' },
-        { name: 'Aria Chen', text: 'Can you show the effects pedal chain?', avatar: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=100&auto=format&fit=crop&q=80' },
-      ];
-
-      const randomItem = mockChatters[Math.floor(Math.random() * mockChatters.length)];
-      setLiveComments((prev) => [
-        ...prev.slice(-15),
-        {
-          id: `lc_${Date.now()}`,
-          user: {
-            id: `u_${Date.now()}`,
-            name: randomItem.name,
-            username: randomItem.name.toLowerCase().replace(' ', '_'),
-            avatar: randomItem.avatar,
-            followersCount: 50,
-            followingCount: 50,
-            likesCount: 100,
-          },
-          text: randomItem.text,
-          timestamp: 'Just now',
-        },
-      ]);
-
-      // Random floating heart burst
-      if (Math.random() > 0.3) {
-        triggerLiveHeart();
-      }
-    }, 3800);
-
-    return () => clearInterval(interval);
-  }, [activeLiveRoom]);
-
-  // Periodic placeholder notification simulator to showcase real-time feel
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setActiveToast({
-        id: 'toast_1',
-        title: 'Marcus Chen went LIVE! 🔴',
-        message: '🎧 "Live Modular Jam & Q&A | Making Beats from Scratch"',
-        type: 'live',
-      });
-    }, 12000);
-
-    return () => clearTimeout(timer);
-  }, []);
+    // Zero dummy users or mock chatters - only real comments from active participants
+    setLiveComments([]);
+  }, [activeLiveRoom?.id]);
 
   const dismissToast = () => setActiveToast(null);
 
@@ -1755,6 +1691,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const clearLiveComments = () => {
     setLiveComments([]);
+  };
+
+  const addIncomingLiveComment = (comment: LiveComment) => {
+    setLiveComments((prev) => {
+      if (prev.some((c) => c.id === comment.id)) return prev;
+      return [...prev, comment];
+    });
   };
 
   const sendLiveGift = (gift: LiveGift): boolean => {
@@ -2504,6 +2447,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         liveComments,
         sendLiveComment,
         clearLiveComments,
+        addIncomingLiveComment,
         sendLiveGift,
         floatingHearts,
         triggerLiveHeart,

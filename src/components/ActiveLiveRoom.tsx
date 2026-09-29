@@ -20,6 +20,7 @@ export const ActiveLiveRoom: React.FC = () => {
     liveComments, 
     sendLiveComment, 
     clearLiveComments,
+    addIncomingLiveComment,
     sendLiveGift, 
     floatingHearts, 
     triggerLiveHeart,
@@ -33,7 +34,9 @@ export const ActiveLiveRoom: React.FC = () => {
   // Chat & Gifts
   const [commentInput, setCommentInput] = useState('');
   const [giftsDrawerOpen, setGiftsDrawerOpen] = useState(false);
-  const [viewersCount, setViewersCount] = useState(activeLiveRoom ? activeLiveRoom.viewerCount : 124);
+  const [viewersCount, setViewersCount] = useState(1);
+  const [realLiveViewers, setRealLiveViewers] = useState<User[]>([]);
+  const presenceChannelRef = useRef<any>(null);
 
   // Host Controls (3 dots menu) & Moderation
   const [hostMenuOpen, setHostMenuOpen] = useState(false);
@@ -72,14 +75,12 @@ export const ActiveLiveRoom: React.FC = () => {
     liveBlockedUserIds.has(user.id)
   ));
 
-  // Real-time Live Stream Viewer Count via Supabase Presence & live_participants table
+  // Real-time Live Stream Viewer Count & Real Broadcast Channel via Supabase
   useEffect(() => {
     if (!activeLiveRoom) return;
 
     let presenceChannel: any = null;
-    const baseCount = activeLiveRoom.viewerCount || 124;
 
-    // 1. Try Supabase Realtime Presence
     if (supabase) {
       try {
         const channelName = `live_stream_${activeLiveRoom.id.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
@@ -88,30 +89,91 @@ export const ActiveLiveRoom: React.FC = () => {
             presence: {
               key: user?.id || `viewer_${Math.random().toString(36).slice(2, 8)}`,
             },
+            broadcast: { ack: false },
           },
         });
+        presenceChannelRef.current = presenceChannel;
 
         presenceChannel
           .on('presence', { event: 'sync' }, () => {
             const state = presenceChannel.presenceState();
-            const realCount = Object.keys(state).length;
-            if (realCount > 0) {
-              setViewersCount(realCount + (baseCount > 20 ? Math.floor(baseCount * 0.4) : 0));
+            const presenceKeys = Object.keys(state);
+            const count = Math.max(1, presenceKeys.length);
+            setViewersCount(count);
+
+            // Extract real presence viewers
+            const realViewersList: User[] = [];
+            for (const key of presenceKeys) {
+              const presences = state[key] as any[];
+              if (presences && presences.length > 0) {
+                const p = presences[0];
+                if (p && p.user_id && p.user_id !== user?.id) {
+                  realViewersList.push({
+                    id: p.user_id,
+                    name: p.name || p.username || 'Live Viewer',
+                    username: p.username || 'viewer',
+                    avatar: p.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.user_id}`,
+                    bio: '',
+                    followersCount: 0,
+                    followingCount: 0,
+                    likesCount: 0,
+                    isFollowing: false,
+                  });
+                }
+              }
+            }
+            setRealLiveViewers(realViewersList);
+          })
+          .on('broadcast', { event: 'live_comment' }, ({ payload }: { payload: any }) => {
+            if (payload && payload.user) {
+              addIncomingLiveComment(payload);
+            }
+          })
+          .on('broadcast', { event: 'live_heart' }, () => {
+            triggerLiveHeart();
+          })
+          .on('broadcast', { event: 'clear_chat' }, () => {
+            clearLiveComments();
+            showFeedbackToast('Chat was cleared by host');
+          })
+          .on('broadcast', { event: 'mute_all' }, ({ payload }: { payload: { isMuted: boolean } }) => {
+            setIsAllChatMuted(payload.isMuted);
+            showFeedbackToast(payload.isMuted ? 'Host has muted live chat' : 'Host has unmuted live chat');
+          })
+          .on('broadcast', { event: 'live_block' }, ({ payload }: { payload: { targetUserId: string; blocked: boolean } }) => {
+            if (payload && payload.targetUserId) {
+              setLiveBlockedUserIds((prev) => {
+                const next = new Set(prev);
+                if (payload.blocked) {
+                  next.add(payload.targetUserId);
+                } else {
+                  next.delete(payload.targetUserId);
+                }
+                return next;
+              });
+            }
+          })
+          .on('broadcast', { event: 'end_live' }, () => {
+            if (!isHost) {
+              showFeedbackToast('Host has ended the live stream');
+              setTimeout(() => closeLiveRoom(), 1200);
             }
           })
           .subscribe(async (status: string) => {
             if (status === 'SUBSCRIBED') {
               try {
                 await presenceChannel.track({
-                  user_id: user?.id || 'guest',
+                  user_id: user?.id || `viewer_${Date.now()}`,
+                  name: user?.name || 'Viewer',
                   username: user?.username || 'viewer',
+                  avatar: user?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100',
                   online_at: new Date().toISOString(),
                 });
               } catch {}
             }
           });
 
-        // 2. Query live_participants count if table exists
+        // Query live_participants count if table exists
         supabase
           .from('live_participants')
           .select('*', { count: 'exact', head: true })
@@ -129,20 +191,15 @@ export const ActiveLiveRoom: React.FC = () => {
       }
     }
 
-    // 3. Dynamic heartbeat pulse to keep viewer counter lively
-    const interval = setInterval(() => {
-      setViewersCount((prev) => Math.max(12, prev + Math.floor(Math.random() * 5) - 2));
-    }, 4500);
-
     return () => {
-      clearInterval(interval);
       if (presenceChannel && supabase) {
         try {
           supabase.removeChannel(presenceChannel);
         } catch {}
       }
+      presenceChannelRef.current = null;
     };
-  }, [activeLiveRoom?.id]);
+  }, [activeLiveRoom?.id, user?.id]);
 
   // Initialize ZegoExpressEngine Local Video View Container & turn camera on
   useEffect(() => {
@@ -179,14 +236,6 @@ export const ActiveLiveRoom: React.FC = () => {
   useEffect(() => {
     commentsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [liveComments]);
-
-  // Dynamic viewer counter pulse
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setViewersCount((prev) => Math.max(1, prev + Math.floor(Math.random() * 5) - 2));
-    }, 4000);
-    return () => clearInterval(interval);
-  }, []);
 
   if (!activeLiveRoom) return null;
 
@@ -229,10 +278,21 @@ export const ActiveLiveRoom: React.FC = () => {
     }, 2800);
   };
 
+  // Heart trigger helper that broadcasts real heart burst
+  const handleTriggerHeart = () => {
+    triggerLiveHeart();
+    try {
+      presenceChannelRef.current?.send({
+        type: 'broadcast',
+        event: 'live_heart',
+      });
+    } catch {}
+  };
+
   // Chat message send handler
   const handleSendComment = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!commentInput.trim()) return;
+    if (!commentInput.trim() || !user) return;
 
     if (isViewerBlockedFromLive) {
       showFeedbackToast('You are blocked from chatting in this stream');
@@ -249,19 +309,54 @@ export const ActiveLiveRoom: React.FC = () => {
       return;
     }
 
-    sendLiveComment(commentInput);
+    const newComment = {
+      id: `lc_${Date.now()}`,
+      user,
+      text: commentInput.trim(),
+      timestamp: 'Just now',
+    };
+
+    sendLiveComment(commentInput.trim());
+    try {
+      presenceChannelRef.current?.send({
+        type: 'broadcast',
+        event: 'live_comment',
+        payload: newComment,
+      });
+    } catch {}
+
     setCommentInput('');
   };
 
   // Gift send handler (100% Free Virtual Gifts)
   const handleGiftClick = (gift: LiveGift) => {
+    if (!user) return;
     sendLiveGift(gift);
+    try {
+      presenceChannelRef.current?.send({
+        type: 'broadcast',
+        event: 'live_comment',
+        payload: {
+          id: `lc_gift_${Date.now()}`,
+          user,
+          text: `Sent ${gift.name} ${gift.icon}`,
+          isGift: true,
+          giftName: gift.name,
+          giftIcon: gift.icon,
+          timestamp: 'Just now',
+        },
+      });
+    } catch {}
     showFeedbackToast(`Sent ${gift.name} ${gift.icon}!`);
   };
 
   // End live broadcast handler
   const handleEndLive = () => {
     try {
+      presenceChannelRef.current?.send({
+        type: 'broadcast',
+        event: 'end_live',
+      });
       zegoLiveEngine.stopTracks();
     } catch {}
     closeLiveRoom();
@@ -278,6 +373,13 @@ export const ActiveLiveRoom: React.FC = () => {
           next.delete(targetUser.id);
           return next;
         });
+        try {
+          presenceChannelRef.current?.send({
+            type: 'broadcast',
+            event: 'live_block',
+            payload: { targetUserId: targetUser.id, blocked: false },
+          });
+        } catch {}
         showFeedbackToast(`✅ @${targetUser.username} has been unblocked`);
       } catch (err) {
         showFeedbackToast(`Error unblocking: ${err}`);
@@ -287,6 +389,13 @@ export const ActiveLiveRoom: React.FC = () => {
         await blockUser(targetUser);
         setLiveBlockedUserIds((prev) => new Set(prev).add(targetUser.id));
         setKickedUserIds((prev) => new Set(prev).add(targetUser.id));
+        try {
+          presenceChannelRef.current?.send({
+            type: 'broadcast',
+            event: 'live_block',
+            payload: { targetUserId: targetUser.id, blocked: true },
+          });
+        } catch {}
         showFeedbackToast(`⛔ @${targetUser.username} blocked from this stream`);
       } catch (err) {
         showFeedbackToast(`Error blocking: ${err}`);
@@ -491,6 +600,12 @@ export const ActiveLiveRoom: React.FC = () => {
                     onClick={() => {
                       setHostMenuOpen(false);
                       clearLiveComments();
+                      try {
+                        presenceChannelRef.current?.send({
+                          type: 'broadcast',
+                          event: 'clear_chat',
+                        });
+                      } catch {}
                       showFeedbackToast('All chat messages deleted by host');
                     }}
                     className="w-full px-2.5 py-2 rounded-xl text-left text-xs font-semibold text-slate-200 hover:bg-slate-800 hover:text-white flex items-center gap-2 transition-colors"
@@ -504,6 +619,13 @@ export const ActiveLiveRoom: React.FC = () => {
                     onClick={() => {
                       const nextMute = !isAllChatMuted;
                       setIsAllChatMuted(nextMute);
+                      try {
+                        presenceChannelRef.current?.send({
+                          type: 'broadcast',
+                          event: 'mute_all',
+                          payload: { isMuted: nextMute },
+                        });
+                      } catch {}
                       setHostMenuOpen(false);
                       showFeedbackToast(nextMute ? 'All viewers muted in chat' : 'All viewers unmuted in chat');
                     }}
@@ -733,7 +855,7 @@ export const ActiveLiveRoom: React.FC = () => {
 
             {/* Heart Reaction Trigger */}
             <button
-              onClick={triggerLiveHeart}
+              onClick={handleTriggerHeart}
               className="p-2.5 rounded-full bg-fuchsia-500/25 hover:bg-fuchsia-500/45 border border-fuchsia-500 text-fuchsia-400 hover:text-white backdrop-blur-md hover:scale-110 active:scale-90 transition-transform"
               title="Send Heart"
             >
@@ -942,18 +1064,26 @@ export const ActiveLiveRoom: React.FC = () => {
 
               {/* Viewers & Chat Participants List */}
               <div className="flex-1 overflow-y-auto space-y-2 pr-1 no-scrollbar min-h-48">
-                {Array.from(new Set(liveComments.map((c) => c.user.id)))
-                  .map((id) => liveComments.find((c) => c.user.id === id)?.user)
-                  .filter((u): u is User => Boolean(u && u.id !== user?.id))
-                  .concat(
-                    liveComments.length === 0
-                      ? [
-                          { id: 'usr_viewer_1', name: 'Zack Walker', username: 'zackw', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150', bio: '', followersCount: 120, followingCount: 80, likesCount: 400, isFollowing: false },
-                          { id: 'usr_viewer_2', name: 'Maya Lin', username: 'mayal', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150', bio: '', followersCount: 450, followingCount: 120, likesCount: 950, isFollowing: false },
-                        ]
-                      : []
-                  )
-                  .map((participant) => {
+                {(() => {
+                  const combined = Array.from(
+                    new Map(
+                      [...realLiveViewers, ...liveComments.map((c) => c.user)]
+                        .filter((u): u is User => Boolean(u && u.id && u.id !== user?.id))
+                        .map((u) => [u.id, u])
+                    ).values()
+                  );
+
+                  if (combined.length === 0) {
+                    return (
+                      <div className="py-12 text-center text-slate-400">
+                        <Users className="w-8 h-8 text-slate-600 mx-auto mb-2 opacity-60" />
+                        <p className="text-xs font-bold text-slate-300">No viewers watching yet</p>
+                        <p className="text-[11px] text-slate-500 mt-1">Real viewers joining this live broadcast will appear here.</p>
+                      </div>
+                    );
+                  }
+
+                  return combined.map((participant) => {
                     const isBlocked = isUserBlocked(participant.id) || liveBlockedUserIds.has(participant.id);
                     return (
                       <div
@@ -988,7 +1118,8 @@ export const ActiveLiveRoom: React.FC = () => {
                         </button>
                       </div>
                     );
-                  })}
+                  });
+                })()}
               </div>
 
               <div className="pt-2 border-t border-slate-800 shrink-0 flex items-center justify-between">
