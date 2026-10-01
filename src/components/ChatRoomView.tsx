@@ -102,10 +102,22 @@ export const ChatRoomView: React.FC = () => {
     };
   }, [isRecordingVoice]);
 
-  if (!activeConversation) return null;
+  const defaultParticipant: User = {
+    id: activeConversation?.participant?.id || 'usr_unknown',
+    name: activeConversation?.participant?.name || 'Friend',
+    username: activeConversation?.participant?.username || 'friend',
+    avatar: activeConversation?.participant?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
+    bio: '',
+    followersCount: 0,
+    followingCount: 0,
+    likesCount: 0,
+    isFollowing: false,
+  };
 
   // Real-time profile resolution from Supabase 'profiles' table using friend_id
-  const [resolvedParticipant, setResolvedParticipant] = useState<User>(activeConversation.participant);
+  const [resolvedParticipant, setResolvedParticipant] = useState<User>(
+    activeConversation?.participant || defaultParticipant
+  );
 
   useEffect(() => {
     if (!activeConversation?.participant) return;
@@ -137,6 +149,8 @@ export const ChatRoomView: React.FC = () => {
         );
     }
   }, [activeConversation?.participant?.id]);
+
+  if (!activeConversation) return null;
 
   const participantDisplayName = (!resolvedParticipant.name || resolvedParticipant.name.includes('Pulse User'))
     ? (resolvedParticipant.username || (resolvedParticipant.id ? `@${resolvedParticipant.id.slice(0, 8)}` : 'Pulse Member'))
@@ -173,7 +187,7 @@ export const ChatRoomView: React.FC = () => {
     return new Promise((resolve) => {
       const reader = new FileReader();
       reader.onload = (e) => {
-        const img = new Image();
+        const img = new window.Image();
         img.onload = () => {
           let width = img.width;
           let height = img.height;

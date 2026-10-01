@@ -550,11 +550,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const isIncoming = areUserIdsEqual(conn.receiverId, currentUid) || (conn.receiver && areUserIdsEqual(conn.receiver.id, currentUid));
           if (conn.status === 'pending' && isIncoming) {
             const senderName = conn.requester?.name || 'Pulse Friend';
-            const actorObj = conn.requester || {
+            const actorObj: User = conn.requester ? {
+              ...conn.requester,
+              followersCount: conn.requester.followersCount ?? 0,
+              followingCount: conn.requester.followingCount ?? 0,
+              likesCount: conn.requester.likesCount ?? 0,
+            } : {
               id: conn.requesterId,
               name: senderName,
               username: conn.requester?.username || `user_${conn.requesterId.slice(0, 8)}`,
               avatar: conn.requester?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+              followersCount: 0,
+              followingCount: 0,
+              likesCount: 0,
             };
             setNotifications((prev) => {
               const exists = prev.some((n) => 
@@ -692,18 +700,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 type: 'like',
               });
 
-              // Also add to in-app notifications
+              const actorObj: User = conn.requester ? {
+                ...conn.requester,
+                followersCount: conn.requester.followersCount ?? 0,
+                followingCount: conn.requester.followingCount ?? 0,
+                likesCount: conn.requester.likesCount ?? 0,
+              } : {
+                id: conn.requesterId,
+                name: senderName,
+                username: conn.requester?.username || `user_${conn.requesterId.slice(0, 8)}`,
+                avatar: conn.requester?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
+                followersCount: 0,
+                followingCount: 0,
+                likesCount: 0,
+              };
+
               setNotifications((prev) => {
                 if (prev.some((n) => n.connectionId === conn.id || (n.type === 'connection_request' && areUserIdsEqual(n.actor.id, conn.requesterId)))) return prev;
                 return [
                   {
                     id: `notif_conn_${Date.now()}`,
-                    actor: conn.requester || {
-                      id: conn.requesterId,
-                      name: senderName,
-                      username: conn.requester?.username || `user_${conn.requesterId.slice(0, 8)}`,
-                      avatar: conn.requester?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
-                    },
+                    actor: actorObj,
                     type: 'connection_request',
                     text: 'sent you a friend connection request',
                     timestamp: 'Just now',
@@ -1131,10 +1148,81 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const viewProfileUser = (targetUser: User | null) => {
+  const viewProfileUser = (targetUser: User | null | any) => {
     audioUtils.playPop();
-    setViewingProfileUser(targetUser);
+    if (!targetUser) {
+      setViewingProfileUser(null);
+      setActiveTab('profile');
+      return;
+    }
+
+    // Support string ID, partial user, or full user object
+    const rawId = typeof targetUser === 'string' ? targetUser.trim() : String(targetUser.id || targetUser.userId || targetUser.user_id || '').trim();
+    if (!rawId) {
+      setViewingProfileUser(null);
+      setActiveTab('profile');
+      return;
+    }
+
+    const currentUid = user?.id || 'usr_current';
+    if (areUserIdsEqual(rawId, currentUid)) {
+      setViewingProfileUser(null);
+      setActiveTab('profile');
+      return;
+    }
+
+    const initialName = typeof targetUser === 'object' && (targetUser.name || targetUser.displayName || targetUser.display_name || targetUser.full_name);
+    const initialUsername = typeof targetUser === 'object' && (targetUser.username || targetUser.user_username);
+    const initialAvatar = typeof targetUser === 'object' && (targetUser.avatar || targetUser.avatar_url);
+
+    const safeUser: User = {
+      id: rawId,
+      name: initialName || initialUsername || `User ${rawId.replace(/^usr_/, '').slice(0, 8)}`,
+      username: (initialUsername || `user_${rawId.replace(/^usr_/, '').slice(0, 8)}`).replace(/^@/, ''),
+      avatar: initialAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
+      bio: typeof targetUser === 'object' ? (targetUser.bio || '') : '',
+      verified: typeof targetUser === 'object' ? Boolean(targetUser.verified) : false,
+      followersCount: typeof targetUser === 'object' ? (Number(targetUser.followersCount ?? targetUser.followers_count) || 12) : 12,
+      followingCount: typeof targetUser === 'object' ? (Number(targetUser.followingCount ?? targetUser.following_count) || 5) : 5,
+      likesCount: typeof targetUser === 'object' ? (Number(targetUser.likesCount ?? targetUser.likes_count) || 28) : 28,
+      isPrivate: typeof targetUser === 'object' ? Boolean(targetUser.isPrivate || targetUser.is_private) : false,
+    };
+
+    setViewingProfileUser(safeUser);
     setActiveTab('profile');
+
+    // Asynchronously enrich from Supabase 'profiles' table if available
+    if (supabase && rawId) {
+      (async () => {
+        try {
+          const { data: prof, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .or(`id.eq.${rawId},username.ilike.${rawId}`)
+            .maybeSingle();
+
+          if (!error && prof) {
+            setViewingProfileUser((prev) => {
+              if (!prev || prev.id !== safeUser.id) return prev;
+              const realName = prof.display_name || prof.name || prof.full_name || prof.username || prev.name;
+              const realAvatar = prof.avatar_url || prof.avatar || prev.avatar;
+              return {
+                ...prev,
+                name: realName,
+                username: (prof.username || prev.username).replace(/^@/, ''),
+                avatar: realAvatar,
+                bio: prof.bio !== undefined ? prof.bio : prev.bio,
+                verified: prof.verified !== undefined ? Boolean(prof.verified) : prev.verified,
+                followersCount: prof.followers_count ?? prev.followersCount,
+                followingCount: prof.following_count ?? prev.followingCount,
+                likesCount: prof.likes_count ?? prev.likesCount,
+                isPrivate: prof.is_private !== undefined ? Boolean(prof.is_private) : prev.isPrivate,
+              };
+            });
+          }
+        } catch {}
+      })();
+    }
   };
 
   // Connection & Friend Request System Handlers
@@ -1148,20 +1236,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const pairKey = getCanonicalConnectionPairKey(currentUserId, targetUserId);
       const conn = connections.find(
         (c) =>
-          getCanonicalConnectionPairKey(c.requesterId, c.receiverId) === pairKey ||
+          c &&
+          (getCanonicalConnectionPairKey(c.requesterId, c.receiverId) === pairKey ||
           (c.requester && areUserIdsEqual(c.requester.id, targetUserId) && areUserIdsEqual(c.receiverId, currentUserId)) ||
-          (c.receiver && areUserIdsEqual(c.receiver.id, targetUserId) && areUserIdsEqual(c.requesterId, currentUserId))
+          (c.receiver && areUserIdsEqual(c.receiver.id, targetUserId) && areUserIdsEqual(c.requesterId, currentUserId)))
       );
 
       if (!conn) {
         return { status: 'none', isIncoming: false, isOutgoing: false };
       }
 
-      const isIncoming = areUserIdsEqual(conn.receiverId, currentUserId) || (conn.receiver && areUserIdsEqual(conn.receiver.id, currentUserId));
-      const isOutgoing = areUserIdsEqual(conn.requesterId, currentUserId) || (conn.requester && areUserIdsEqual(conn.requester.id, currentUserId));
+      const isIncoming = Boolean(conn.receiverId && areUserIdsEqual(conn.receiverId, currentUserId)) || Boolean(conn.receiver && areUserIdsEqual(conn.receiver.id, currentUserId));
+      const isOutgoing = Boolean(conn.requesterId && areUserIdsEqual(conn.requesterId, currentUserId)) || Boolean(conn.requester && areUserIdsEqual(conn.requester.id, currentUserId));
 
       return {
-        status: conn.status,
+        status: conn.status || 'none',
         isIncoming,
         isOutgoing,
         connectionId: conn.id,
@@ -2069,7 +2158,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           id: `toast_post_${Date.now()}`,
           title: 'Published Locally',
           message: 'Reel published. Connect your Supabase credentials in Settings to sync with cloud.',
-          type: 'coin',
+          type: 'like',
         });
       }
 

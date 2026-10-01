@@ -27,14 +27,7 @@ export const DirectMessagesView: React.FC = () => {
   const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [showAIAssistant, setShowAIAssistant] = useState(false);
-
-  if (showAIAssistant) {
-    return <AIChatAssistant onBack={() => setShowAIAssistant(false)} />;
-  }
-
-  if (activeConversation) {
-    return <ChatRoomView />;
-  }
+  const [friendProfiles, setFriendProfiles] = useState<Record<string, { name: string; avatar: string; username: string }>>({});
 
   const currentUserId = user?.id || 'usr_current';
   const acceptedFriends: User[] = connections
@@ -43,8 +36,6 @@ export const DirectMessagesView: React.FC = () => {
     .filter((f): f is User => Boolean(f && f.id && !areUserIdsEqual(f.id, currentUserId)));
 
   // Real-time friend profile enrichment from Supabase 'profiles' table using friend_id
-  const [friendProfiles, setFriendProfiles] = useState<Record<string, { name: string; avatar: string; username: string }>>({});
-
   useEffect(() => {
     if (!supabase) return;
     const allIds = new Set<string>();
@@ -76,6 +67,14 @@ export const DirectMessagesView: React.FC = () => {
         }
       }, (e) => console.warn('Supabase profiles fetch notice:', e));
   }, [acceptedFriends.length, conversations.length]);
+
+  if (showAIAssistant) {
+    return <AIChatAssistant onBack={() => setShowAIAssistant(false)} />;
+  }
+
+  if (activeConversation) {
+    return <ChatRoomView />;
+  }
 
   const filteredConversations = conversations.filter((c) => {
     const prof = friendProfiles[c.participant.id];

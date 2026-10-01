@@ -178,9 +178,33 @@ export const UserSearchModal: React.FC<UserSearchModalProps> = ({
   );
 
   // Calculate connected friends
-  const friendsList = connections
-    .filter((c) => c.status === 'accepted')
-    .map((c) => (areUserIdsEqual(c.requesterId, currentUserId) ? c.receiver || c.requester : c.requester || c.receiver))
+  const friendsList: User[] = connections
+    .filter((c) => c && c.status === 'accepted')
+    .map((c) => {
+      const isReq = areUserIdsEqual(c.requesterId, currentUserId);
+      const friendObj = isReq ? (c.receiver || c.requester) : (c.requester || c.receiver);
+      const friendId = isReq ? c.receiverId : c.requesterId;
+      const targetId = (friendObj && friendObj.id) ? friendObj.id : friendId;
+      if (!targetId || areUserIdsEqual(targetId, currentUserId)) return null;
+
+      const safeUsername = (friendObj?.username || `user_${targetId.replace(/^usr_/, '').slice(0, 8)}`).replace(/^@/, '');
+      const safeName = friendObj?.name || `@${safeUsername}` || 'Pulse Friend';
+      const safeAvatar = friendObj?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
+
+      const safeFriend: User = {
+        id: targetId,
+        name: safeName,
+        username: safeUsername,
+        avatar: safeAvatar,
+        bio: friendObj?.bio || 'Connected on Pulse',
+        verified: Boolean(friendObj?.verified),
+        followersCount: Number(friendObj?.followersCount) || 12,
+        followingCount: Number(friendObj?.followingCount) || 5,
+        likesCount: Number(friendObj?.likesCount) || 28,
+        isPrivate: Boolean(friendObj?.isPrivate),
+      };
+      return safeFriend;
+    })
     .filter((u): u is User => Boolean(u && !areUserIdsEqual(u.id, currentUserId)));
 
   // Copy current user's ID
@@ -976,7 +1000,15 @@ export const UserSearchModal: React.FC<UserSearchModalProps> = ({
                         <div className="flex items-center gap-1.5 text-[10px]">
                           <span className="text-fuchsia-400">@{friend.username}</span>
                           <span className="text-slate-600">•</span>
-                          <span className="font-mono text-emerald-400 bg-slate-950 px-1.5 py-0.2 rounded border border-slate-800">
+                          <span 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              viewProfileUser(friend);
+                              onClose();
+                            }}
+                            className="font-mono text-emerald-400 bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800 hover:border-emerald-500/60 hover:bg-slate-900 transition-colors select-all"
+                            title="Tap to view friend profile"
+                          >
                             {friend.id}
                           </span>
                         </div>

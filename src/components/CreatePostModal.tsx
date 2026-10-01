@@ -19,7 +19,7 @@ export const CreatePostModal: React.FC = () => {
     uploadMedia,
     createType,
     setActiveTab
-  } = useApp();
+  } = useApp() as any;
   const { user } = useAuth();
 
   const [tab, setTab] = useState<'reel' | 'story' | 'live'>('reel');

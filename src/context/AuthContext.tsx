@@ -278,7 +278,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     setUser((prev) => {
       // Keep existing local user state as baseline if same user id
-      const base = (prev && prev.id === sessionUser.id) ? prev : {};
+      const base: Partial<User> = (prev && prev.id === sessionUser.id) ? prev : {};
       
       const resolvedName = dbProfile?.name || meta.full_name || meta.name || sessionUser.email?.split('@')[0] || base.name || 'Pulse Member';
       const resolvedUsername = dbProfile?.username || meta.username || sessionUser.email?.split('@')[0]?.toLowerCase() || base.username || 'pulsar';

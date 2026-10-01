@@ -173,7 +173,7 @@ export const Header: React.FC = () => {
             setActiveTab('camera');
           }}
           className={`p-2 rounded-full transition-colors ${
-            activeTab === 'camera'
+            (activeTab as string) === 'camera'
               ? 'bg-fuchsia-500/20 text-fuchsia-400'
               : 'text-slate-300 hover:text-white hover:bg-slate-900'
           }`}

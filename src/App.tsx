@@ -26,11 +26,14 @@ import { UserSearchModal } from './components/UserSearchModal';
 import { CoinsRewardModal } from './components/CoinsRewardModal';
 import { CoinRewardBanner } from './components/CoinRewardBanner';
 import { PaymentWalletModal } from './components/PaymentWalletModal';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 const MainAppContent: React.FC = () => {
   const { 
     activeTab, 
     setActiveTab, 
+    viewProfileUser,
+    viewingProfileUser,
     isMobilePreviewFrame,
     activeCall,
     incomingCall,
@@ -136,7 +139,15 @@ const MainAppContent: React.FC = () => {
 
             {/* Main Body View */}
             <main className={`flex-1 w-full ${isChatRoomOpen ? 'h-full min-h-[550px] flex flex-col overflow-hidden' : 'min-h-full h-auto overflow-y-visible'} relative no-scrollbar`}>
-              {renderActiveView()}
+              <ErrorBoundary
+                key={`view-${activeTab}-${viewingProfileUser?.id || 'self'}`}
+                onReset={() => {
+                  viewProfileUser(null);
+                  setActiveTab('home');
+                }}
+              >
+                {renderActiveView()}
+              </ErrorBoundary>
             </main>
 
             {/* Bottom Navigation Dock (hidden during chat room and camera view for immersive full-screen experience) */}
@@ -202,10 +213,12 @@ const MainAppContent: React.FC = () => {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppProvider>
-        <MainAppContent />
-      </AppProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <AppProvider>
+          <MainAppContent />
+        </AppProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }

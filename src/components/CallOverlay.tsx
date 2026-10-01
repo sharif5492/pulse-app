@@ -231,7 +231,7 @@ export const CallOverlay: React.FC<CallOverlayProps> = ({
         {/* Center: Contact Name / Phone & Status */}
         <div className="text-center min-w-0 flex-1 px-3">
           <h2 className="text-base sm:text-lg font-semibold text-white truncate tracking-wide">
-            {session.participant.phone || session.participant.name}
+            {(session.participant as any).phone || session.participant.name}
           </h2>
           <p className="text-xs text-slate-400 mt-0.5 font-normal">
             {session.status === 'connected' ? (
