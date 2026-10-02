@@ -240,8 +240,8 @@ async function startServer() {
   // Respond to friend request (accept / decline / cancel)
   app.post('/api/connections/respond', (req, res) => {
     try {
-      const { connectionId, requesterId, receiverId, status } = req.body;
-      const updated = socialRegistry.respondConnection({ connectionId, requesterId, receiverId }, status);
+      const { connectionId, requesterId, receiverId, status, receiver } = req.body;
+      const updated = socialRegistry.respondConnection({ connectionId, requesterId, receiverId, receiver }, status);
       if (!updated) {
         return res.status(404).json({ error: 'Connection not found' });
       }

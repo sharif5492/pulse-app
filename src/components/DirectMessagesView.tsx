@@ -12,7 +12,7 @@ import { ChatRoomView } from './ChatRoomView';
 import { AIChatAssistant } from './AIChatAssistant';
 import { UserStatusBadge } from './UserStatusBadge';
 import { areUserIdsEqual } from '../utils/userIdUtils';
-import { supabase } from '../lib/supabase';
+import { supabase, usersDiscoveryService, getPersistentAvatar } from '../lib/supabase';
 
 export const DirectMessagesView: React.FC = () => {
   const { 
@@ -31,12 +31,83 @@ export const DirectMessagesView: React.FC = () => {
 
   const currentUserId = user?.id || 'usr_current';
   const acceptedFriends: User[] = connections
-    .filter((c) => c.status === 'accepted')
-    .map((c) => (areUserIdsEqual(c.requesterId, currentUserId) ? c.receiver : c.requester))
+    .filter((c) => c && c.status === 'accepted')
+    .map((c) => {
+      const isReq = areUserIdsEqual(c.requesterId, currentUserId);
+      const friendObj = isReq ? (c.receiver || c.requester) : (c.requester || c.receiver);
+      const friendId = isReq ? c.receiverId : c.requesterId;
+      const targetId = friendObj?.id || friendId;
+      if (!targetId || areUserIdsEqual(targetId, currentUserId)) return null;
+
+      const localUsers = usersDiscoveryService.getStoredUsers();
+      const localMatch = localUsers.find((u) => areUserIdsEqual(u.id, targetId));
+      const persistentAv = getPersistentAvatar(targetId);
+
+      const rawUsername = friendObj?.username || localMatch?.username;
+      const rawName = friendObj?.name || localMatch?.name;
+      const rawAvatar = friendObj?.avatar || localMatch?.avatar || persistentAv;
+
+      let safeUsername = rawUsername || '';
+      if (!safeUsername || safeUsername.startsWith('usr_') || safeUsername === targetId) {
+        if (localMatch?.username && !localMatch.username.startsWith('usr_')) {
+          safeUsername = localMatch.username;
+        } else {
+          safeUsername = targetId.replace(/^usr_/, '').slice(0, 10);
+        }
+      }
+      safeUsername = safeUsername.replace(/^@/, '');
+
+      let safeName = rawName || '';
+      if (!safeName || safeName.startsWith('usr_') || safeName === targetId || safeName.includes('Pulse User')) {
+        if (localMatch?.name && !localMatch.name.startsWith('usr_') && !localMatch.name.includes('Pulse User')) {
+          safeName = localMatch.name;
+        } else if (safeUsername) {
+          safeName = safeUsername;
+        } else {
+          safeName = 'Pulse Friend';
+        }
+      }
+
+      const safeAvatar = rawAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
+
+      return {
+        ...(friendObj || {}),
+        id: targetId,
+        name: safeName,
+        username: safeUsername,
+        avatar: safeAvatar,
+      } as User;
+    })
     .filter((f): f is User => Boolean(f && f.id && !areUserIdsEqual(f.id, currentUserId)));
 
-  // Real-time friend profile enrichment from Supabase 'profiles' table using friend_id
+  // Real-time friend profile enrichment from local store & Supabase
   useEffect(() => {
+    // 1. Immediately enrich from local discovery directory & persistent avatars
+    const map: Record<string, { name: string; avatar: string; username: string }> = {};
+    const localUsers = usersDiscoveryService.getStoredUsers();
+    localUsers.forEach((u) => {
+      if (u.id) {
+        map[u.id] = {
+          name: u.name,
+          avatar: u.avatar || getPersistentAvatar(u.id) || '',
+          username: u.username,
+        };
+      }
+    });
+
+    acceptedFriends.forEach((f) => {
+      if (f.id && !map[f.id]) {
+        map[f.id] = {
+          name: f.name,
+          avatar: f.avatar,
+          username: f.username,
+        };
+      }
+    });
+
+    setFriendProfiles((prev) => ({ ...map, ...prev }));
+
+    // 2. Query Supabase if connected
     if (!supabase) return;
     const allIds = new Set<string>();
     acceptedFriends.forEach((f) => { if (f.id) allIds.add(f.id); });
@@ -51,19 +122,19 @@ export const DirectMessagesView: React.FC = () => {
       .in('id', idList)
       .then(({ data, error }) => {
         if (!error && data && data.length > 0) {
-          const map: Record<string, { name: string; avatar: string; username: string }> = {};
+          const dbMap: Record<string, { name: string; avatar: string; username: string }> = {};
           data.forEach((p) => {
             const realName = p.display_name || p.name || p.full_name || p.username;
             const realAvatar = p.avatar_url || p.avatar;
             if (p.id) {
-              map[p.id] = {
+              dbMap[p.id] = {
                 name: realName,
                 avatar: realAvatar,
                 username: p.username,
               };
             }
           });
-          setFriendProfiles((prev) => ({ ...prev, ...map }));
+          setFriendProfiles((prev) => ({ ...prev, ...dbMap }));
         }
       }, (e) => console.warn('Supabase profiles fetch notice:', e));
   }, [acceptedFriends.length, conversations.length]);
@@ -308,10 +379,12 @@ export const DirectMessagesView: React.FC = () => {
             const online = isUserOnline(conv.participant.id) ?? conv.isOnline;
             const prof = friendProfiles[conv.participant.id];
             const rawName = prof?.name || conv.participant.name;
-            const displayName = (!rawName || rawName.includes('Pulse User'))
-              ? (prof?.username || conv.participant.username || (conv.participant.id ? `@${conv.participant.id.slice(0, 8)}` : 'Chat'))
+            const rawUname = prof?.username || conv.participant.username || '';
+            const displayUsername = rawUname ? rawUname.replace(/^@/, '') : '';
+            const displayName = (!rawName || rawName.includes('Pulse User') || rawName.startsWith('usr_'))
+              ? (displayUsername ? `@${displayUsername}` : (conv.participant.id ? `Friend #${conv.participant.id.slice(0, 6)}` : 'Chat'))
               : rawName;
-            const displayAvatar = prof?.avatar || conv.participant.avatar;
+            const displayAvatar = prof?.avatar || conv.participant.avatar || getPersistentAvatar(conv.participant.id) || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
 
             return (
               <div
@@ -321,6 +394,7 @@ export const DirectMessagesView: React.FC = () => {
                   participant: {
                     ...conv.participant,
                     name: displayName,
+                    username: displayUsername || conv.participant.username,
                     avatar: displayAvatar,
                   },
                 })}
@@ -341,10 +415,15 @@ export const DirectMessagesView: React.FC = () => {
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="font-bold text-xs text-white group-hover:text-fuchsia-300 transition-colors">
                         {displayName}
                       </span>
+                      {displayUsername && (
+                        <span className="text-[11px] text-fuchsia-400 font-medium">
+                          @{displayUsername}
+                        </span>
+                      )}
                       {conv.participant.verified && (
                         <span className="text-[9px] text-fuchsia-400 font-bold">✓</span>
                       )}

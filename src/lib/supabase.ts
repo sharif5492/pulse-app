@@ -3,6 +3,8 @@ import { User, UserConnection, ConnectionStatus } from '../types';
 import { getPersistentAvatar, savePersistentAvatar, optimizeAvatarImage } from './avatarStorage';
 import { areUserIdsEqual, getCanonicalConnectionPairKey, normalizeUserId } from '../utils/userIdUtils';
 
+export { getPersistentAvatar, savePersistentAvatar, optimizeAvatarImage };
+
 // Retrieve credentials from environment variables (NEXT_PUBLIC_* or VITE_*) with optional admin override in localStorage
 export function getStoredSupabaseConfig() {
   const envUrl = 
@@ -192,15 +194,20 @@ export const authService = {
         });
         if (error) throw error;
         if (data.user) {
-          return {
-            user: {
-              id: data.user.id,
-              email: data.user.email,
-              name: name || email.split('@')[0],
-              username: username || email.split('@')[0].toLowerCase(),
-              avatar: `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80`,
-            },
+          const userObj: User = {
+            id: data.user.id,
+            email: data.user.email,
+            name: name || email.split('@')[0],
+            username: (username || email.split('@')[0] || 'pulsar').toLowerCase().replace(/^@/, ''),
+            avatar: `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80`,
+            followersCount: 0,
+            followingCount: 0,
+            likesCount: 0,
           };
+          // Immediately upsert into public.profiles table so other users discover them by real name & username
+          profileService.updateProfile(data.user.id, userObj).catch(() => {});
+          usersDiscoveryService.registerUserLocally(userObj);
+          return { user: userObj };
         }
       } catch (err: any) {
         return { user: null, error: err.message || 'Signup failed' };
@@ -208,15 +215,18 @@ export const authService = {
     }
 
     // Demo Mode fallback
-    return {
-      user: {
-        id: `usr_${Date.now()}`,
-        email,
-        name: name || 'Pulse Member',
-        username: username || 'new_pulsar',
-        avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80',
-      },
+    const demoUser: User = {
+      id: `usr_${Date.now()}`,
+      email,
+      name: name || 'Pulse Member',
+      username: (username || 'new_pulsar').toLowerCase().replace(/^@/, ''),
+      avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80',
+      followersCount: 0,
+      followingCount: 0,
+      likesCount: 0,
     };
+    usersDiscoveryService.registerUserLocally(demoUser);
+    return { user: demoUser };
   },
 
   async signInWithGoogle(): Promise<{ error?: string | null; redirected?: boolean }> {
@@ -432,16 +442,18 @@ export const profileService = {
         updated_at: new Date().toISOString(),
       };
       if (updates.name !== undefined) {
-        profileRow.full_name = updates.name;
         profileRow.name = updates.name;
+        profileRow.display_name = updates.name;
       }
-      if (updates.username !== undefined) profileRow.username = updates.username;
+      if (updates.username !== undefined) {
+        profileRow.username = updates.username.toLowerCase().replace(/^@/, '');
+      }
       if (updates.avatar !== undefined) {
-        profileRow.avatar_url = updates.avatar;
         profileRow.avatar = updates.avatar;
+        profileRow.avatar_url = updates.avatar;
       }
       if (updates.bio !== undefined) profileRow.bio = updates.bio;
-      if (updates.verified !== undefined) profileRow.verified = updates.verified;
+      if (updates.verified !== undefined) profileRow.is_verified = updates.verified;
       if (updates.followersCount !== undefined) profileRow.followers_count = updates.followersCount;
       if (updates.followingCount !== undefined) profileRow.following_count = updates.followingCount;
       if (updates.likesCount !== undefined) profileRow.likes_count = updates.likesCount;
@@ -449,13 +461,40 @@ export const profileService = {
 
       const { error: profileDbErr } = await supabase.from('profiles').upsert([profileRow]);
       if (profileDbErr) {
-        // Fallback to 'users' table if 'profiles' table name differs
+        // Fallback: strip optional alias columns and upsert strictly matching core schema (name, username, avatar)
         try {
-          await supabase.from('users').upsert([profileRow]);
+          const minimalRow: Record<string, any> = {
+            id: userId,
+            name: updates.name,
+            username: updates.username ? updates.username.toLowerCase().replace(/^@/, '') : undefined,
+            avatar: updates.avatar,
+            bio: updates.bio,
+            updated_at: new Date().toISOString(),
+          };
+          Object.keys(minimalRow).forEach((k) => minimalRow[k] === undefined && delete minimalRow[k]);
+          await supabase.from('profiles').upsert([minimalRow]);
         } catch (uErr) {
           // ignore
         }
       }
+
+      // Also register user locally in directory
+      usersDiscoveryService.registerUserLocally({
+        id: userId,
+        name: updates.name || 'Pulse Member',
+        username: (updates.username || 'pulsar').toLowerCase().replace(/^@/, ''),
+        avatar: updates.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
+        ...updates,
+      } as User);
+
+      // Sync to shared backend API if available
+      try {
+        fetch('/api/users/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user: { id: userId, ...updates } }),
+        }).catch(() => {});
+      } catch {}
 
       return { success: true };
     } catch (err: any) {
@@ -1237,64 +1276,115 @@ export const connectionsService = {
       } catch (err) {
         console.warn('Supabase fetchConnections warning:', err);
       }
+    }
 
-      // 4. Fetch real display_name & avatar_url from 'profiles' for all connected friend IDs
-      try {
-        const friendUserIds = new Set<string>();
-        for (const conn of candidateConnections) {
-          if (conn.requesterId && conn.requesterId !== userId) {
-            friendUserIds.add(conn.requesterId);
-          }
-          if (conn.receiverId && conn.receiverId !== userId) {
-            friendUserIds.add(conn.receiverId);
-          }
+    // 4. Fetch real display_name, username & avatar from 'profiles', local storage, and persistent avatar store for all connected friend IDs
+    try {
+      const friendUserIds = new Set<string>();
+      for (const conn of candidateConnections) {
+        if (conn.requesterId && !areUserIdsEqual(conn.requesterId, userId)) {
+          friendUserIds.add(conn.requesterId);
+          friendUserIds.add(conn.requesterId.replace(/^usr_/, ''));
+          friendUserIds.add(`usr_${conn.requesterId.replace(/^usr_/, '')}`);
         }
-
-        if (friendUserIds.size > 0) {
-          const { data: profilesData } = await supabase
-            .from('profiles')
-            .select('id, display_name, full_name, name, username, avatar_url, avatar')
-            .in('id', Array.from(friendUserIds));
-
-          if (profilesData && profilesData.length > 0) {
-            const profileMap = new Map<string, any>();
-            profilesData.forEach((p) => profileMap.set(p.id, p));
-
-            for (const conn of candidateConnections) {
-              if (conn.requesterId && profileMap.has(conn.requesterId)) {
-                const p = profileMap.get(conn.requesterId);
-                const realName = p.display_name || p.name || p.full_name || p.username || (p.username ? `@${p.username}` : conn.requesterId);
-                const realAvatar = p.avatar_url || p.avatar;
-                conn.requester = {
-                  id: conn.requesterId,
-                  name: realName,
-                  username: p.username || `user_${conn.requesterId.slice(0, 8)}`,
-                  avatar: realAvatar || conn.requester?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
-                  followersCount: conn.requester?.followersCount ?? 0,
-                  followingCount: conn.requester?.followingCount ?? 0,
-                  likesCount: conn.requester?.likesCount ?? 0,
-                };
-              }
-              if (conn.receiverId && profileMap.has(conn.receiverId)) {
-                const p = profileMap.get(conn.receiverId);
-                const realName = p.display_name || p.name || p.full_name || p.username || (p.username ? `@${p.username}` : conn.receiverId);
-                const realAvatar = p.avatar_url || p.avatar;
-                conn.receiver = {
-                  id: conn.receiverId,
-                  name: realName,
-                  username: p.username || `user_${conn.receiverId.slice(0, 8)}`,
-                  avatar: realAvatar || conn.receiver?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
-                  followersCount: conn.receiver?.followersCount ?? 0,
-                  followingCount: conn.receiver?.followingCount ?? 0,
-                  likesCount: conn.receiver?.likesCount ?? 0,
-                };
-              }
-            }
-          }
+        if (conn.receiverId && !areUserIdsEqual(conn.receiverId, userId)) {
+          friendUserIds.add(conn.receiverId);
+          friendUserIds.add(conn.receiverId.replace(/^usr_/, ''));
+          friendUserIds.add(`usr_${conn.receiverId.replace(/^usr_/, '')}`);
         }
-      } catch (err) {
-        console.warn('Profiles enrichment error:', err);
       }
+
+      const profileMap = new Map<string, any>();
+
+      // Check local stored users first as instant baseline
+      const localStoredUsers = this.getStoredUsers();
+      for (const lu of localStoredUsers) {
+        if (lu && lu.id) {
+          profileMap.set(lu.id, lu);
+          profileMap.set(lu.id.replace(/^usr_/, ''), lu);
+          profileMap.set(`usr_${lu.id.replace(/^usr_/, '')}`, lu);
+        }
+      }
+
+      if (supabase && friendUserIds.size > 0) {
+        const { data: profilesData } = await supabase
+          .from('profiles')
+          .select('id, name, display_name, full_name, username, avatar, avatar_url, bio, verified, followers_count, following_count, likes_count')
+          .in('id', Array.from(friendUserIds));
+
+        if (profilesData && profilesData.length > 0) {
+          profilesData.forEach((p) => {
+            profileMap.set(p.id, p);
+            profileMap.set(p.id.replace(/^usr_/, ''), p);
+            profileMap.set(`usr_${p.id.replace(/^usr_/, '')}`, p);
+          });
+        }
+
+        // If any friends missing from profiles, check posts table
+        const missingIds = Array.from(friendUserIds).filter((id) => !profileMap.has(id));
+        if (missingIds.length > 0) {
+          try {
+            const { data: postsData } = await supabase
+              .from('posts')
+              .select('user_id, author_name, author_username, author_avatar')
+              .in('user_id', missingIds)
+              .limit(20);
+            if (postsData && postsData.length > 0) {
+              postsData.forEach((post) => {
+                const fallbackObj = {
+                  id: post.user_id,
+                  name: post.author_name,
+                  username: post.author_username,
+                  avatar: post.author_avatar,
+                };
+                profileMap.set(post.user_id, fallbackObj);
+                profileMap.set(post.user_id.replace(/^usr_/, ''), fallbackObj);
+              });
+            }
+          } catch {}
+        }
+      }
+
+      for (const conn of candidateConnections) {
+        if (conn.requesterId) {
+          const p = profileMap.get(conn.requesterId) || 
+                    profileMap.get(conn.requesterId.replace(/^usr_/, '')) || 
+                    profileMap.get(`usr_${conn.requesterId.replace(/^usr_/, '')}`);
+          const realUname = p?.username || conn.requester?.username;
+          const realName = p?.name || p?.display_name || p?.full_name || conn.requester?.name || realUname;
+          const realAvatar = p?.avatar || p?.avatar_url || getPersistentAvatar(conn.requesterId) || conn.requester?.avatar;
+
+          conn.requester = {
+            id: conn.requesterId,
+            name: realName && !realName.startsWith('usr_') && !realName.includes('Pulse User') ? realName : (realUname || 'Pulse Friend'),
+            username: realUname ? realUname.replace(/^@/, '') : (conn.requester?.username || `user_${conn.requesterId.replace(/^usr_/, '').slice(0, 8)}`),
+            avatar: realAvatar || conn.requester?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
+            followersCount: conn.requester?.followersCount ?? p?.followers_count ?? 10,
+            followingCount: conn.requester?.followingCount ?? p?.following_count ?? 5,
+            likesCount: conn.requester?.likesCount ?? p?.likes_count ?? 20,
+          };
+        }
+        if (conn.receiverId) {
+          const p = profileMap.get(conn.receiverId) || 
+                    profileMap.get(conn.receiverId.replace(/^usr_/, '')) || 
+                    profileMap.get(`usr_${conn.receiverId.replace(/^usr_/, '')}`);
+          const realUname = p?.username || conn.receiver?.username;
+          const realName = p?.name || p?.display_name || p?.full_name || conn.receiver?.name || realUname;
+          const realAvatar = p?.avatar || p?.avatar_url || getPersistentAvatar(conn.receiverId) || conn.receiver?.avatar;
+
+          conn.receiver = {
+            id: conn.receiverId,
+            name: realName && !realName.startsWith('usr_') && !realName.includes('Pulse User') ? realName : (realUname || 'Pulse Friend'),
+            username: realUname ? realUname.replace(/^@/, '') : (conn.receiver?.username || `user_${conn.receiverId.replace(/^usr_/, '').slice(0, 8)}`),
+            avatar: realAvatar || conn.receiver?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
+            followersCount: conn.receiver?.followersCount ?? p?.followers_count ?? 10,
+            followingCount: conn.receiver?.followingCount ?? p?.following_count ?? 5,
+            likesCount: conn.receiver?.likesCount ?? p?.likes_count ?? 20,
+          };
+        }
+      }
+    } catch (err) {
+      console.warn('Profiles enrichment error:', err);
     }
 
     // Merge with local cache: Canonical pair key deduplication with newest timestamp winning
@@ -1398,7 +1488,12 @@ export const connectionsService = {
     return newConn;
   },
 
-  async acceptConnectionRequest(connectionId: string, requesterId: string, receiverId: string): Promise<boolean> {
+  async acceptConnectionRequest(
+    connectionId: string, 
+    requesterId: string, 
+    receiverId: string,
+    receiverUser?: User
+  ): Promise<boolean> {
     const pairKey = getCanonicalConnectionPairKey(requesterId, receiverId);
     const now = new Date().toISOString();
 
@@ -1406,7 +1501,12 @@ export const connectionsService = {
       const list = this.getLocalConnections(uId);
       const updated = list.map((c) => {
         if (c.id === connectionId || getCanonicalConnectionPairKey(c.requesterId, c.receiverId) === pairKey) {
-          return { ...c, status: 'accepted' as ConnectionStatus, updatedAt: now };
+          return { 
+            ...c, 
+            status: 'accepted' as ConnectionStatus, 
+            updatedAt: now,
+            receiver: receiverUser || c.receiver,
+          };
         }
         return c;
       });
@@ -1421,15 +1521,28 @@ export const connectionsService = {
       await fetch('/api/connections/respond', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ connectionId, requesterId, receiverId, status: 'accepted' }),
+        body: JSON.stringify({ 
+          connectionId, 
+          requesterId, 
+          receiverId, 
+          status: 'accepted',
+          receiver: receiverUser,
+        }),
       });
     } catch {}
 
     if (supabase) {
       try {
+        const updatePayload: any = { 
+          status: 'accepted', 
+          updated_at: now 
+        };
+        if (receiverUser) {
+          updatePayload.receiver_metadata = receiverUser;
+        }
         await supabase
           .from('connections')
-          .update({ status: 'accepted', updated_at: now })
+          .update(updatePayload)
           .or(`id.eq.${connectionId},and(requester_id.eq.${requesterId},receiver_id.eq.${receiverId})`);
       } catch (err) {
         console.warn('Supabase acceptConnectionRequest warning:', err);
@@ -2040,11 +2153,42 @@ export const usersDiscoveryService = {
 
     const allUsers = await this.getAllUsers(currentUserId);
 
+    // Query Supabase directly for this query string if active
+    let dbQueryResults: User[] = [];
+    if (supabase && cleanQuery) {
+      try {
+        const { data: dbMatches } = await supabase
+          .from('profiles')
+          .select('id, name, display_name, full_name, username, avatar, avatar_url, bio, verified, followers_count, following_count, likes_count')
+          .or(`id.ilike.%${cleanQuery}%,username.ilike.%${cleanQuery}%,name.ilike.%${cleanQuery}%`)
+          .limit(25);
+
+        if (dbMatches && dbMatches.length > 0) {
+          dbQueryResults = dbMatches.map((d: any) => ({
+            id: d.id,
+            name: d.name || d.display_name || d.full_name || d.username || 'Pulse Member',
+            username: (d.username || `user_${d.id.slice(0, 8)}`).replace(/^@/, ''),
+            avatar: d.avatar || d.avatar_url || getPersistentAvatar(d.id) || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
+            bio: d.bio || '',
+            verified: Boolean(d.verified),
+            followersCount: d.followers_count || 10,
+            followingCount: d.following_count || 5,
+            likesCount: d.likes_count || 20,
+          }));
+        }
+      } catch (err) {
+        // ignore
+      }
+    }
+
     // Combine distinct users (strictly exclude any dummy IDs)
     const DUMMY_IDS = new Set(['usr_1', 'usr_2', 'usr_3', 'usr_4', 'usr_5', 'usr_6']);
     const combinedMap = new Map<string, User>();
     for (const u of serverResults) {
       if (u.id && !DUMMY_IDS.has(u.id)) combinedMap.set(u.id, u);
+    }
+    for (const u of dbQueryResults) {
+      if (u.id && !combinedMap.has(u.id) && !DUMMY_IDS.has(u.id)) combinedMap.set(u.id, u);
     }
     for (const u of allUsers) {
       if (u.id && !combinedMap.has(u.id) && !DUMMY_IDS.has(u.id)) combinedMap.set(u.id, u);
@@ -2089,29 +2233,67 @@ export const usersDiscoveryService = {
     if (!idOrUsername) return null;
     const clean = idOrUsername.trim().replace(/^[@#]/, '');
     const cleanLower = clean.toLowerCase();
+    const cleanWithout = cleanLower.replace(/^usr_/, '');
 
-    // 1. Direct query against Supabase 'profiles' table using friend_id / username
+    // 0. Check local stored users first for instantaneous zero-latency response
+    const localList = this.getStoredUsers();
+    const localFound = localList.find(
+      (u) =>
+        areUserIdsEqual(u.id, clean) ||
+        u.username.toLowerCase() === cleanLower ||
+        u.id.toLowerCase().replace(/^usr_/, '') === cleanWithout
+    );
+    if (localFound) {
+      return localFound;
+    }
+
+    // 1. Direct query against Supabase 'profiles' table using id / username variants
     if (supabase) {
       try {
         const { data: prof, error } = await supabase
           .from('profiles')
           .select('*')
-          .or(`id.eq.${clean},username.ilike.${clean},username.ilike.${cleanLower}`)
+          .or(`id.eq.${clean},id.eq.usr_${cleanWithout},id.eq.${cleanWithout},username.ilike.${clean},username.ilike.${cleanLower}`)
           .maybeSingle();
 
         if (!error && prof) {
-          const resolvedName = prof.display_name || prof.name || prof.full_name || prof.username || clean;
-          const resolvedAvatar = prof.avatar_url || prof.avatar || getPersistentAvatar(prof.id) || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80';
-          return {
+          const resolvedName = prof.name || prof.display_name || prof.full_name || prof.username || clean;
+          const resolvedAvatar = prof.avatar || prof.avatar_url || getPersistentAvatar(prof.id) || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80';
+          const resolvedUser: User = {
             id: prof.id,
             name: resolvedName,
-            username: prof.username || cleanLower,
+            username: (prof.username || cleanLower).replace(/^@/, ''),
             avatar: resolvedAvatar,
             bio: prof.bio || prof.about || 'Pulse Member ✨',
             followersCount: prof.followers_count || 10,
             followingCount: prof.following_count || 5,
             likesCount: prof.likes_count || 20,
           };
+          this.registerUserLocally(resolvedUser);
+          return resolvedUser;
+        }
+
+        // Check posts table for author info
+        const { data: postAuthor } = await supabase
+          .from('posts')
+          .select('user_id, author_name, author_username, author_avatar')
+          .or(`user_id.eq.${clean},user_id.eq.usr_${cleanWithout},author_username.ilike.${cleanLower}`)
+          .limit(1)
+          .maybeSingle();
+
+        if (postAuthor) {
+          const fromPost: User = {
+            id: postAuthor.user_id,
+            name: postAuthor.author_name || clean,
+            username: (postAuthor.author_username || cleanLower).replace(/^@/, ''),
+            avatar: postAuthor.author_avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
+            bio: 'Pulse Creator ✨',
+            followersCount: 10,
+            followingCount: 5,
+            likesCount: 20,
+          };
+          this.registerUserLocally(fromPost);
+          return fromPost;
         }
       } catch (err) {
         console.warn('Supabase profiles lookup error:', err);
@@ -2124,6 +2306,7 @@ export const usersDiscoveryService = {
       if (resp.ok) {
         const data = await resp.json();
         if (data.success && data.user) {
+          this.registerUserLocally(data.user);
           return data.user;
         }
       }
@@ -2133,16 +2316,18 @@ export const usersDiscoveryService = {
     try {
       const prof = await profileService.getProfile(clean);
       if (prof && prof.id && prof.name && !prof.name.includes('Pulse User')) {
-        return {
+        const fromProf: User = {
           id: prof.id,
           name: prof.name,
-          username: prof.username || cleanLower,
-          avatar: prof.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
+          username: (prof.username || cleanLower).replace(/^@/, ''),
+          avatar: prof.avatar || getPersistentAvatar(prof.id) || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
           bio: prof.bio || 'Pulse Member ✨',
           followersCount: prof.followersCount || 10,
           followingCount: prof.followingCount || 5,
           likesCount: prof.likesCount || 20,
         };
+        this.registerUserLocally(fromProf);
+        return fromProf;
       }
     } catch {}
 

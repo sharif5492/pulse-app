@@ -18,6 +18,7 @@ import {
   connectionsService,
   presenceService,
   usersDiscoveryService,
+  getPersistentAvatar,
   insertNotificationInSupabase, 
   uploadMediaToStorage,
   fetchNotifications as apiFetchNotifications,
@@ -1171,45 +1172,58 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
 
-    const initialName = typeof targetUser === 'object' && (targetUser.name || targetUser.displayName || targetUser.display_name || targetUser.full_name);
-    const initialUsername = typeof targetUser === 'object' && (targetUser.username || targetUser.user_username);
-    const initialAvatar = typeof targetUser === 'object' && (targetUser.avatar || targetUser.avatar_url);
+    const localMatch = usersDiscoveryService.getStoredUsers().find((u) => areUserIdsEqual(u.id, rawId));
+    const persistentAv = getPersistentAvatar(rawId);
+
+    const initialName = (typeof targetUser === 'object' && (targetUser.name || targetUser.displayName || targetUser.display_name || targetUser.full_name)) || localMatch?.name;
+    const initialUsername = (typeof targetUser === 'object' && (targetUser.username || targetUser.user_username)) || localMatch?.username;
+    const initialAvatar = (typeof targetUser === 'object' && (targetUser.avatar || targetUser.avatar_url)) || localMatch?.avatar || persistentAv;
+
+    const cleanUsername = initialUsername && !initialUsername.startsWith('usr_')
+      ? initialUsername.replace(/^@/, '')
+      : (localMatch?.username ? localMatch.username.replace(/^@/, '') : `user_${rawId.replace(/^usr_/, '').slice(0, 8)}`);
+
+    const cleanName = initialName && !initialName.startsWith('usr_') && !initialName.includes('Pulse User')
+      ? initialName
+      : (cleanUsername ? `@${cleanUsername}` : 'Pulse Member');
 
     const safeUser: User = {
       id: rawId,
-      name: initialName || initialUsername || `User ${rawId.replace(/^usr_/, '').slice(0, 8)}`,
-      username: (initialUsername || `user_${rawId.replace(/^usr_/, '').slice(0, 8)}`).replace(/^@/, ''),
+      name: cleanName,
+      username: cleanUsername,
       avatar: initialAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
-      bio: typeof targetUser === 'object' ? (targetUser.bio || '') : '',
-      verified: typeof targetUser === 'object' ? Boolean(targetUser.verified) : false,
-      followersCount: typeof targetUser === 'object' ? (Number(targetUser.followersCount ?? targetUser.followers_count) || 12) : 12,
-      followingCount: typeof targetUser === 'object' ? (Number(targetUser.followingCount ?? targetUser.following_count) || 5) : 5,
-      likesCount: typeof targetUser === 'object' ? (Number(targetUser.likesCount ?? targetUser.likes_count) || 28) : 28,
-      isPrivate: typeof targetUser === 'object' ? Boolean(targetUser.isPrivate || targetUser.is_private) : false,
+      bio: typeof targetUser === 'object' ? (targetUser.bio || localMatch?.bio || '') : (localMatch?.bio || ''),
+      verified: typeof targetUser === 'object' ? Boolean(targetUser.verified || localMatch?.verified) : Boolean(localMatch?.verified),
+      followersCount: typeof targetUser === 'object' ? (Number(targetUser.followersCount ?? targetUser.followers_count) || localMatch?.followersCount || 12) : 12,
+      followingCount: typeof targetUser === 'object' ? (Number(targetUser.followingCount ?? targetUser.following_count) || localMatch?.followingCount || 5) : 5,
+      likesCount: typeof targetUser === 'object' ? (Number(targetUser.likesCount ?? targetUser.likes_count) || localMatch?.likesCount || 28) : 28,
+      isPrivate: typeof targetUser === 'object' ? Boolean(targetUser.isPrivate || targetUser.is_private || localMatch?.isPrivate) : false,
     };
 
     setViewingProfileUser(safeUser);
     setActiveTab('profile');
 
-    // Asynchronously enrich from Supabase 'profiles' table if available
+    // Asynchronously enrich from Supabase 'profiles' and 'posts' table if available
     if (supabase && rawId) {
       (async () => {
         try {
+          const cleanWithout = rawId.replace(/^usr_/, '');
           const { data: prof, error } = await supabase
             .from('profiles')
             .select('*')
-            .or(`id.eq.${rawId},username.ilike.${rawId}`)
+            .or(`id.eq.${rawId},id.eq.usr_${cleanWithout},id.eq.${cleanWithout},username.ilike.${rawId}`)
             .maybeSingle();
 
           if (!error && prof) {
             setViewingProfileUser((prev) => {
-              if (!prev || prev.id !== safeUser.id) return prev;
-              const realName = prof.display_name || prof.name || prof.full_name || prof.username || prev.name;
-              const realAvatar = prof.avatar_url || prof.avatar || prev.avatar;
+              if (!prev || !areUserIdsEqual(prev.id, safeUser.id)) return prev;
+              const realName = prof.name || prof.display_name || prof.full_name || prof.username || prev.name;
+              const realAvatar = prof.avatar || prof.avatar_url || prev.avatar;
+              const realUname = (prof.username || prev.username).replace(/^@/, '');
               return {
                 ...prev,
-                name: realName,
-                username: (prof.username || prev.username).replace(/^@/, ''),
+                name: realName && !realName.startsWith('usr_') ? realName : `@${realUname}`,
+                username: realUname,
                 avatar: realAvatar,
                 bio: prof.bio !== undefined ? prof.bio : prev.bio,
                 verified: prof.verified !== undefined ? Boolean(prof.verified) : prev.verified,
@@ -1224,6 +1238,51 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       })();
     }
   };
+
+  // Invite Link (#user=...) auto-discovery & friend preview handler
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleHash = () => {
+      const hash = window.location.hash || '';
+      if (hash.includes('user=')) {
+        try {
+          const hashParams = new URLSearchParams(hash.replace(/^#/, ''));
+          const targetUserId = hashParams.get('user');
+          const targetUname = hashParams.get('u');
+          const targetName = hashParams.get('n');
+          const targetAvatar = hashParams.get('a');
+
+          if (targetUserId && !areUserIdsEqual(targetUserId, user?.id || '')) {
+            const friendObj: User = {
+              id: targetUserId,
+              name: targetName || (targetUname ? `@${targetUname}` : 'Pulse Friend'),
+              username: (targetUname || targetUserId).replace(/^@/, ''),
+              avatar: targetAvatar || getPersistentAvatar(targetUserId) || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
+              bio: 'Connected via Pulse Invite Link',
+              followersCount: 10,
+              followingCount: 5,
+              likesCount: 20,
+            };
+            usersDiscoveryService.registerUserLocally(friendObj);
+            viewProfileUser(friendObj);
+            setActiveToast({
+              id: `toast_invite_${Date.now()}`,
+              title: 'Friend Found! 🎉',
+              message: `Found @${friendObj.username}. Tap Connect to become friends!`,
+              type: 'like',
+            });
+            window.history.replaceState({}, document.title, window.location.pathname);
+          }
+        } catch (err) {
+          console.warn('Invite hash parse notice:', err);
+        }
+      }
+    };
+
+    handleHash();
+    window.addEventListener('hashchange', handleHash);
+    return () => window.removeEventListener('hashchange', handleHash);
+  }, [user?.id]);
 
   // Connection & Friend Request System Handlers
   const getConnectionStatusWith = useCallback(
@@ -1320,6 +1379,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const acceptConnectionRequest = async (connectionIdOrUserId: string) => {
     const currentUid = user?.id || 'usr_current';
+    const currentUserObj: User = user || {
+      id: currentUid,
+      name: 'Pulse Member',
+      username: 'pulsar',
+      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&auto=format&fit=crop&q=80',
+      followersCount: 142,
+      followingCount: 28,
+      likesCount: 520,
+    };
     audioUtils.playCallConnected();
     try {
       confetti({
@@ -1347,8 +1415,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (isMatch) {
           targetRequesterId = c.requesterId;
           targetRequesterName = c.requester?.name || 'Pulse user';
-          friendUserObj = areUserIdsEqual(c.requesterId, currentUid) ? c.receiver : c.requester;
-          return { ...c, status: 'accepted' as ConnectionStatus, updatedAt: now };
+          const updatedReceiver = areUserIdsEqual(c.receiverId, currentUid) ? currentUserObj : c.receiver;
+          const updatedRequester = areUserIdsEqual(c.requesterId, currentUid) ? currentUserObj : c.requester;
+          friendUserObj = areUserIdsEqual(c.requesterId, currentUid) ? updatedReceiver : updatedRequester;
+          return { 
+            ...c, 
+            status: 'accepted' as ConnectionStatus, 
+            updatedAt: now,
+            receiver: updatedReceiver,
+            requester: updatedRequester,
+          };
         }
         return c;
       })
@@ -1416,7 +1492,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await connectionsService.acceptConnectionRequest(
       connectionIdOrUserId,
       targetRequesterId || connectionIdOrUserId,
-      currentUid
+      currentUid,
+      currentUserObj
     );
   };
 

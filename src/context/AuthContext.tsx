@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User, AuthMode, WalletTransaction, PaymentMethodType } from '../types';
 import { CURRENT_USER } from '../mockData';
-import { authService, isSupabaseConfigured, supabase, profileService } from '../lib/supabase';
+import { authService, isSupabaseConfigured, supabase, profileService, usersDiscoveryService } from '../lib/supabase';
 import { getPersistentAvatar, savePersistentAvatar, optimizeAvatarImage } from '../lib/avatarStorage';
 import { audioUtils } from '../lib/audioUtils';
 
@@ -434,6 +434,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isPrivate: dbProfile?.isPrivate ?? false,
       };
       setUser(loggedUser);
+      usersDiscoveryService.registerUserLocally(loggedUser);
       if (typeof window !== 'undefined') {
         localStorage.setItem('pulse_current_user', JSON.stringify(loggedUser));
         localStorage.setItem('pulse_auth_authenticated', 'true');
@@ -472,6 +473,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isPrivate: false,
       };
       setUser(newUser);
+      usersDiscoveryService.registerUserLocally(newUser);
       if (typeof window !== 'undefined') {
         localStorage.setItem('pulse_current_user', JSON.stringify(newUser));
         localStorage.setItem('pulse_auth_authenticated', 'true');
@@ -607,6 +609,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const updatedUser: User = { ...user, ...updates };
     setUser(updatedUser);
+    usersDiscoveryService.registerUserLocally(updatedUser);
     if (typeof window !== 'undefined') {
       localStorage.setItem('pulse_current_user', JSON.stringify(updatedUser));
       if (updatedUser.avatar) {

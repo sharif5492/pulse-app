@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   Settings, Grid, Heart, Bookmark, 
   Sparkles, Edit3, Share2, 
@@ -14,7 +14,8 @@ import { EditProfileModal } from './EditProfileModal';
 import { BlockedUsersModal } from './BlockedUsersModal';
 import { audioUtils } from '../lib/audioUtils';
 import { UserStatusBadge } from './UserStatusBadge';
-import { optimizeAvatarImage, savePersistentAvatar } from '../lib/avatarStorage';
+import { optimizeAvatarImage, savePersistentAvatar, getPersistentAvatar } from '../lib/avatarStorage';
+import { usersDiscoveryService } from '../lib/supabase';
 import { areUserIdsEqual } from '../utils/userIdUtils';
 import { ErrorBoundary } from './ErrorBoundary';
 
@@ -43,8 +44,46 @@ export const OtherUserProfileView: React.FC<OtherUserProfileViewProps> = ({ targ
   const [isFollowingTarget, setIsFollowingTarget] = useState(false);
 
   const safeTargetId = targetUser?.id || '';
+
+  const [profileData, setProfileData] = useState<User>(() => {
+    const rawId = targetUser?.id || '';
+    const persistentAv = getPersistentAvatar(rawId);
+    const localMatch = usersDiscoveryService.getStoredUsers().find((u) => areUserIdsEqual(u.id, rawId));
+    const safeUname = (targetUser?.username && !targetUser.username.startsWith('usr_'))
+      ? targetUser.username.replace(/^@/, '')
+      : (localMatch?.username ? localMatch.username.replace(/^@/, '') : (targetUser?.username || `user_${rawId.replace(/^usr_/, '').slice(0, 8)}`));
+    const safeNm = (targetUser?.name && !targetUser.name.startsWith('usr_') && !targetUser.name.includes('Pulse User'))
+      ? targetUser.name
+      : (localMatch?.name || (safeUname ? `@${safeUname}` : 'Pulse Member'));
+
+    return {
+      ...targetUser,
+      name: safeNm,
+      username: safeUname,
+      avatar: targetUser?.avatar || localMatch?.avatar || persistentAv || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
+    };
+  });
+
+  useEffect(() => {
+    const rawId = targetUser?.id;
+    if (!rawId) return;
+
+    usersDiscoveryService.lookupUser(rawId).then((found) => {
+      if (found) {
+        setProfileData((prev) => ({
+          ...prev,
+          name: (found.name && !found.name.startsWith('usr_')) ? found.name : prev.name,
+          username: (found.username && !found.username.startsWith('usr_')) ? found.username.replace(/^@/, '') : prev.username,
+          avatar: found.avatar || prev.avatar,
+          bio: found.bio || prev.bio,
+          verified: found.verified ?? prev.verified,
+        }));
+      }
+    });
+  }, [targetUser?.id]);
+
   const isBlocked = safeTargetId ? isUserBlocked(safeTargetId) : false;
-  const isPrivate = Boolean(targetUser?.isPrivate);
+  const isPrivate = Boolean(profileData?.isPrivate);
   const connInfo = safeTargetId 
     ? getConnectionStatusWith(safeTargetId) 
     : { status: 'none' as const, isIncoming: false, isOutgoing: false };
@@ -52,9 +91,18 @@ export const OtherUserProfileView: React.FC<OtherUserProfileViewProps> = ({ targ
   const isPendingOutgoing = connInfo.status === 'pending' && (connInfo.isOutgoing || !connInfo.isIncoming);
   const isPendingIncoming = connInfo.status === 'pending' && connInfo.isIncoming;
 
-  const safeUsername = (targetUser?.username || `user_${safeTargetId.replace(/^usr_/, '').slice(0, 8)}`).replace(/^@/, '');
-  const safeName = targetUser?.name || `@${safeUsername}` || 'Pulse Member';
-  const safeAvatar = targetUser?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80';
+  const safeUsername = (profileData?.username || `user_${safeTargetId.replace(/^usr_/, '').slice(0, 8)}`).replace(/^@/, '');
+  const safeName = profileData?.name || `@${safeUsername}` || 'Pulse Member';
+  const safeAvatar = profileData?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80';
+
+  const fullTargetUser: User = {
+    ...targetUser,
+    ...profileData,
+    id: safeTargetId,
+    name: safeName,
+    username: safeUsername,
+    avatar: safeAvatar,
+  };
 
   const creatorReels = (reels || []).filter(
     (r) =>
@@ -67,13 +115,13 @@ export const OtherUserProfileView: React.FC<OtherUserProfileViewProps> = ({ targ
   const handleStartTargetCall = (type: 'audio' | 'video') => {
     audioUtils.playPop();
     if (isBlocked) return;
-    startCall(targetUser, type);
+    startCall(fullTargetUser, type);
   };
 
   const handleOpenTargetChat = () => {
     audioUtils.playPop();
     if (targetUser) {
-      startChatWithUser(targetUser);
+      startChatWithUser(fullTargetUser);
     }
   };
 
@@ -89,12 +137,12 @@ export const OtherUserProfileView: React.FC<OtherUserProfileViewProps> = ({ targ
         acceptConnectionRequest(connInfo.connectionId || safeTargetId);
         setIsFollowingTarget(true);
       } else {
-        sendConnectionRequest(targetUser);
+        sendConnectionRequest(fullTargetUser);
       }
     } else {
       setIsFollowingTarget((prev) => !prev);
       if (!isFollowingTarget) {
-        sendConnectionRequest(targetUser);
+        sendConnectionRequest(fullTargetUser);
       } else {
         cancelConnectionRequest(safeTargetId);
       }

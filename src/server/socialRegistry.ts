@@ -303,7 +303,7 @@ class SocialRegistry {
   }
 
   public respondConnection(
-    connectionIdOrUserIds: { connectionId?: string; requesterId?: string; receiverId?: string },
+    connectionIdOrUserIds: { connectionId?: string; requesterId?: string; receiverId?: string; receiver?: any },
     status: 'accepted' | 'declined' | 'cancelled'
   ): ConnectionRecord | null {
     let found: ConnectionRecord | null = null;
@@ -336,6 +336,12 @@ class SocialRegistry {
         this.connections.delete(found.id);
         this.saveToDisk();
         return { ...found, status: 'cancelled', updatedAt: now };
+      }
+      if (connectionIdOrUserIds.receiver && typeof connectionIdOrUserIds.receiver === 'object') {
+        found.receiver = this.registerOrUpdateUser({
+          id: found.receiverId,
+          ...connectionIdOrUserIds.receiver,
+        });
       }
       found.status = status;
       found.updatedAt = now;

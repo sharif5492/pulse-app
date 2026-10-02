@@ -11,6 +11,7 @@ import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { User, ConnectionStatus } from '../types';
 import { usersDiscoveryService, supabase } from '../lib/supabase';
+import { getPersistentAvatar } from '../lib/avatarStorage';
 import { audioUtils } from '../lib/audioUtils';
 import { UserStatusBadge } from './UserStatusBadge';
 import { FriendBarcodeCenter } from './FriendBarcodeCenter';
@@ -187,21 +188,52 @@ export const UserSearchModal: React.FC<UserSearchModalProps> = ({
       const targetId = (friendObj && friendObj.id) ? friendObj.id : friendId;
       if (!targetId || areUserIdsEqual(targetId, currentUserId)) return null;
 
-      const safeUsername = (friendObj?.username || `user_${targetId.replace(/^usr_/, '').slice(0, 8)}`).replace(/^@/, '');
-      const safeName = friendObj?.name || `@${safeUsername}` || 'Pulse Friend';
-      const safeAvatar = friendObj?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
+      // Look up any enriched profile from allNetworkUsers, local store, or persistent avatar
+      const networkMatch = allNetworkUsers.find((u) => areUserIdsEqual(u.id, targetId));
+      const localUsers = usersDiscoveryService.getStoredUsers();
+      const localMatch = localUsers.find((u) => areUserIdsEqual(u.id, targetId));
+      const enriched = networkMatch || localMatch;
+
+      const rawUsername = friendObj?.username || enriched?.username;
+      const rawName = friendObj?.name || enriched?.name;
+      const persistentAvatar = getPersistentAvatar(targetId);
+      const rawAvatar = friendObj?.avatar || enriched?.avatar || persistentAvatar;
+
+      // If username was set to the ID string or starts with usr_, prefer enriched username if available
+      let safeUsername = rawUsername || '';
+      if (!safeUsername || safeUsername.startsWith('usr_') || safeUsername === targetId) {
+        if (enriched?.username && !enriched.username.startsWith('usr_')) {
+          safeUsername = enriched.username;
+        } else {
+          safeUsername = targetId.replace(/^usr_/, '').slice(0, 10);
+        }
+      }
+      safeUsername = safeUsername.replace(/^@/, '');
+
+      let safeName = rawName || '';
+      if (!safeName || safeName.startsWith('usr_') || safeName === targetId || safeName.includes('Pulse User')) {
+        if (enriched?.name && !enriched.name.startsWith('usr_')) {
+          safeName = enriched.name;
+        } else if (safeUsername) {
+          safeName = safeUsername;
+        } else {
+          safeName = 'Pulse Friend';
+        }
+      }
+
+      const safeAvatar = rawAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
 
       const safeFriend: User = {
         id: targetId,
         name: safeName,
         username: safeUsername,
         avatar: safeAvatar,
-        bio: friendObj?.bio || 'Connected on Pulse',
-        verified: Boolean(friendObj?.verified),
-        followersCount: Number(friendObj?.followersCount) || 12,
-        followingCount: Number(friendObj?.followingCount) || 5,
-        likesCount: Number(friendObj?.likesCount) || 28,
-        isPrivate: Boolean(friendObj?.isPrivate),
+        bio: friendObj?.bio || enriched?.bio || 'Connected on Pulse',
+        verified: Boolean(friendObj?.verified || enriched?.verified),
+        followersCount: Number(friendObj?.followersCount || enriched?.followersCount) || 12,
+        followingCount: Number(friendObj?.followingCount || enriched?.followingCount) || 5,
+        likesCount: Number(friendObj?.likesCount || enriched?.likesCount) || 28,
+        isPrivate: Boolean(friendObj?.isPrivate || enriched?.isPrivate),
       };
       return safeFriend;
     })
@@ -228,7 +260,8 @@ export const UserSearchModal: React.FC<UserSearchModalProps> = ({
   const handleShareWhatsApp = (customId?: string) => {
     audioUtils.playPop();
     const idToShare = customId || currentUserId;
-    const inviteText = `Hey! Add me on Pulse! 📱\nMy User ID is: ${idToShare}\nUsername: @${currentUsername}\nAdd me directly or click here: ${window.location.origin}/#user=${idToShare}`;
+    const inviteLink = `${window.location.origin}/#user=${encodeURIComponent(idToShare)}&u=${encodeURIComponent(currentUsername)}&n=${encodeURIComponent(user?.name || currentUsername)}&a=${encodeURIComponent(user?.avatar || '')}`;
+    const inviteText = `Hey! Add me on Pulse! 📱\nMy User ID: ${idToShare}\nUsername: @${currentUsername}\nAdd me directly or click here: ${inviteLink}`;
     const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(inviteText)}`;
     window.open(url, '_blank', 'noopener,noreferrer');
   };
@@ -236,8 +269,8 @@ export const UserSearchModal: React.FC<UserSearchModalProps> = ({
   // Copy invitation link
   const handleCopyInviteLink = () => {
     audioUtils.playPop();
-    const link = `${window.location.origin}/#user=${currentUsername || currentUserId}`;
-    navigator.clipboard.writeText(link);
+    const inviteLink = `${window.location.origin}/#user=${encodeURIComponent(currentUserId)}&u=${encodeURIComponent(currentUsername)}&n=${encodeURIComponent(user?.name || currentUsername)}&a=${encodeURIComponent(user?.avatar || '')}`;
+    navigator.clipboard.writeText(inviteLink);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
   };
@@ -274,17 +307,19 @@ export const UserSearchModal: React.FC<UserSearchModalProps> = ({
     );
 
     const found = await usersDiscoveryService.lookupUser(clean);
+    const resolvedUname = clean.startsWith('usr_') ? clean.replace(/^usr_/, '') : clean;
     const targetUser: User = existing || found || {
       id: clean,
-      name: clean,
-      username: clean,
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
+      name: clean.startsWith('usr_') ? `Pulse Member` : resolvedUname,
+      username: resolvedUname,
+      avatar: getPersistentAvatar(clean) || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
       bio: 'Added via Direct ID Search',
       followersCount: 10,
       followingCount: 5,
       likesCount: 20,
     };
 
+    usersDiscoveryService.registerUserLocally(targetUser);
     await sendConnectionRequest(targetUser);
     setDirectConnectSent(`Friend request sent directly to ${targetUser.name} (${targetUser.id})!`);
     setTimeout(() => setDirectConnectSent(null), 4000);
@@ -808,8 +843,10 @@ export const UserSearchModal: React.FC<UserSearchModalProps> = ({
                               )}
                             </div>
                             
-                            {/* Prominent ID Badge */}
-                            <div className="flex items-center gap-1.5 mt-0.5">
+                            {/* USERNAME & Prominent ID Badge */}
+                            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                              <span className="text-[11px] text-fuchsia-400 font-medium">@{targetUser.username}</span>
+                              <span className="text-slate-600 text-xs">•</span>
                               <span className="text-[10px] uppercase font-bold text-slate-400">ID:</span>
                               <span className="text-[11px] font-mono font-bold text-emerald-400 bg-slate-950 px-2 py-0.5 rounded-md border border-slate-800 select-all">
                                 {targetUser.id}

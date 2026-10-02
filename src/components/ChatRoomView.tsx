@@ -8,7 +8,8 @@ import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { audioUtils } from '../lib/audioUtils';
 import { UserStatusBadge } from './UserStatusBadge';
-import { profileService, supabase } from '../lib/supabase';
+import { profileService, supabase, usersDiscoveryService, getPersistentAvatar } from '../lib/supabase';
+import { areUserIdsEqual } from '../utils/userIdUtils';
 import { User } from '../types';
 
 export const ChatRoomView: React.FC = () => {
@@ -114,15 +115,42 @@ export const ChatRoomView: React.FC = () => {
     isFollowing: false,
   };
 
-  // Real-time profile resolution from Supabase 'profiles' table using friend_id
+  // Real-time profile resolution from local store, persistent avatar, and Supabase using friend_id
   const [resolvedParticipant, setResolvedParticipant] = useState<User>(
     activeConversation?.participant || defaultParticipant
   );
 
   useEffect(() => {
     if (!activeConversation?.participant) return;
-    setResolvedParticipant(activeConversation.participant);
     const friendId = activeConversation.participant.id;
+    setResolvedParticipant(activeConversation.participant);
+
+    if (friendId) {
+      // 1. Check local stored users & persistent avatar first (instant zero-latency)
+      const localUsers = usersDiscoveryService.getStoredUsers();
+      const localMatch = localUsers.find((u) => areUserIdsEqual(u.id, friendId));
+      const persistentAv = getPersistentAvatar(friendId);
+      if (localMatch || persistentAv) {
+        setResolvedParticipant((prev) => ({
+          ...prev,
+          name: (localMatch?.name && !localMatch.name.includes('Pulse User') && !localMatch.name.startsWith('usr_')) ? localMatch.name : prev.name,
+          username: localMatch?.username ? localMatch.username.replace(/^@/, '') : prev.username,
+          avatar: localMatch?.avatar || persistentAv || prev.avatar,
+        }));
+      }
+
+      // 2. Discover via lookup
+      usersDiscoveryService.lookupUser(friendId).then((found) => {
+        if (found) {
+          setResolvedParticipant((prev) => ({
+            ...prev,
+            name: (found.name && !found.name.startsWith('usr_') && !found.name.includes('Pulse User')) ? found.name : prev.name,
+            username: found.username ? found.username.replace(/^@/, '') : prev.username,
+            avatar: found.avatar || prev.avatar,
+          }));
+        }
+      });
+    }
 
     if (supabase && friendId) {
       supabase
@@ -140,7 +168,7 @@ export const ChatRoomView: React.FC = () => {
                   ...prev,
                   name: realName || prev.name,
                   avatar: realAvatar || prev.avatar,
-                  username: data.username || prev.username,
+                  username: data.username ? data.username.replace(/^@/, '') : prev.username,
                 }));
               }
             }
@@ -152,8 +180,9 @@ export const ChatRoomView: React.FC = () => {
 
   if (!activeConversation) return null;
 
-  const participantDisplayName = (!resolvedParticipant.name || resolvedParticipant.name.includes('Pulse User'))
-    ? (resolvedParticipant.username || (resolvedParticipant.id ? `@${resolvedParticipant.id.slice(0, 8)}` : 'Pulse Member'))
+  const rawParticipantUname = (resolvedParticipant.username || '').replace(/^@/, '');
+  const participantDisplayName = (!resolvedParticipant.name || resolvedParticipant.name.includes('Pulse User') || resolvedParticipant.name.startsWith('usr_'))
+    ? (rawParticipantUname ? `@${rawParticipantUname}` : (resolvedParticipant.id ? `Friend #${resolvedParticipant.id.replace(/^usr_/, '').slice(0, 6)}` : 'Pulse Member'))
     : resolvedParticipant.name;
 
   const isBlocked = isUserBlocked(resolvedParticipant.id);
@@ -558,10 +587,15 @@ export const ChatRoomView: React.FC = () => {
               viewProfileUser({ ...resolvedParticipant, name: participantDisplayName });
             }}
           >
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1.5 flex-wrap">
               <span className="font-bold text-xs text-white hover:text-fuchsia-400 transition-colors">
                 {participantDisplayName}
               </span>
+              {rawParticipantUname && (
+                <span className="text-[11px] text-fuchsia-400 font-medium">
+                  @{rawParticipantUname}
+                </span>
+              )}
               {resolvedParticipant.verified && (
                 <span className="text-[9px] text-fuchsia-400 font-bold">✓</span>
               )}

@@ -59,7 +59,7 @@ export const FriendBarcodeCenter: React.FC<FriendBarcodeCenterProps> = ({
 
   // 1. Generate My Barcode / QR Code
   useEffect(() => {
-    const payload = `pulse://user/${currentUserId}`;
+    const payload = `pulse://user?id=${encodeURIComponent(currentUserId)}&username=${encodeURIComponent(currentUsername)}&name=${encodeURIComponent(currentName)}&avatar=${encodeURIComponent(currentAvatar)}`;
     QRCode.toDataURL(payload, {
       width: 320,
       margin: 1,
@@ -75,7 +75,7 @@ export const FriendBarcodeCenter: React.FC<FriendBarcodeCenterProps> = ({
       .catch((err) => {
         console.warn('QR generation error:', err);
       });
-  }, [currentUserId]);
+  }, [currentUserId, currentUsername, currentName, currentAvatar]);
 
   // 2. Camera scanner start/stop
   const stopCamera = () => {
@@ -185,32 +185,86 @@ export const FriendBarcodeCenter: React.FC<FriendBarcodeCenterProps> = ({
     stopCamera();
     setIsLookingUp(true);
 
-    // Parse ID or username
+    // Parse ID or username or embedded query params
     let targetIdOrUsername = cleanRaw;
-    if (cleanRaw.startsWith('pulse://user/')) {
-      targetIdOrUsername = cleanRaw.replace('pulse://user/', '');
+    let embeddedUsername = '';
+    let embeddedName = '';
+    let embeddedAvatar = '';
+
+    if (cleanRaw.startsWith('{') && cleanRaw.endsWith('}')) {
+      try {
+        const parsed = JSON.parse(cleanRaw);
+        targetIdOrUsername = parsed.id || parsed.username || cleanRaw;
+        embeddedUsername = parsed.username || parsed.u || '';
+        embeddedName = parsed.name || parsed.n || '';
+        embeddedAvatar = parsed.avatar || parsed.a || '';
+      } catch {}
+    } else if (cleanRaw.startsWith('pulse://user')) {
+      try {
+        const dummyUrl = new URL(cleanRaw.replace('pulse://user', 'https://pulse.app/user'));
+        targetIdOrUsername = dummyUrl.searchParams.get('id') || dummyUrl.pathname.replace(/^\/user\/?/, '') || cleanRaw;
+        embeddedUsername = dummyUrl.searchParams.get('username') || dummyUrl.searchParams.get('u') || '';
+        embeddedName = dummyUrl.searchParams.get('name') || dummyUrl.searchParams.get('n') || '';
+        embeddedAvatar = dummyUrl.searchParams.get('avatar') || dummyUrl.searchParams.get('a') || '';
+      } catch {
+        targetIdOrUsername = cleanRaw.replace('pulse://user/', '').replace('pulse://user', '');
+      }
+    } else if (cleanRaw.includes('#user=') || cleanRaw.includes('?user=') || cleanRaw.includes('user=')) {
+      try {
+        const urlStr = cleanRaw.startsWith('http') ? cleanRaw : `https://pulse.social/${cleanRaw}`;
+        const hashIdx = urlStr.indexOf('#');
+        if (hashIdx !== -1) {
+          const hashParams = new URLSearchParams(urlStr.substring(hashIdx + 1));
+          targetIdOrUsername = hashParams.get('user') || hashParams.get('id') || targetIdOrUsername;
+          embeddedUsername = hashParams.get('u') || hashParams.get('username') || embeddedUsername;
+          embeddedName = hashParams.get('n') || hashParams.get('name') || embeddedName;
+          embeddedAvatar = hashParams.get('a') || hashParams.get('avatar') || embeddedAvatar;
+        }
+        const queryParams = new URL(urlStr).searchParams;
+        if (queryParams.get('user') || queryParams.get('id')) {
+          targetIdOrUsername = queryParams.get('user') || queryParams.get('id') || targetIdOrUsername;
+          embeddedUsername = queryParams.get('u') || queryParams.get('username') || embeddedUsername;
+          embeddedName = queryParams.get('n') || queryParams.get('name') || embeddedName;
+          embeddedAvatar = queryParams.get('a') || queryParams.get('avatar') || embeddedAvatar;
+        }
+      } catch {}
     }
 
     try {
       const cleanId = targetIdOrUsername.trim().replace(/^[@#]/, '');
       let foundUser: User | null = null;
 
-      // 1. Fetch display_name and avatar_url directly from Supabase table "profiles" using friend_id
-      if (supabase && cleanId) {
+      // If barcode directly carried the user's chosen profile info, build it immediately
+      if (cleanId && embeddedUsername) {
+        foundUser = {
+          id: cleanId,
+          name: embeddedName || `@${embeddedUsername}`,
+          username: embeddedUsername.replace(/^@/, ''),
+          avatar: embeddedAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
+          bio: 'Discovered via Barcode Scan',
+          followersCount: 10,
+          followingCount: 5,
+          likesCount: 20,
+        };
+        usersDiscoveryService.registerUserLocally(foundUser);
+      }
+
+      // 1. Fetch name, username, and avatar directly from Supabase table "profiles" using friend_id
+      if (supabase && cleanId && !foundUser) {
         try {
           const { data: prof, error } = await supabase
             .from('profiles')
-            .select('id, display_name, full_name, name, username, avatar_url, avatar, bio, verified, followers_count, following_count, likes_count')
+            .select('id, name, display_name, full_name, username, avatar, avatar_url, bio, verified, followers_count, following_count, likes_count')
             .or(`id.eq.${cleanId},username.ilike.${cleanId}`)
             .maybeSingle();
 
           if (!error && prof) {
-            const realName = prof.display_name || prof.name || prof.full_name || prof.username || cleanId;
-            const realAvatar = prof.avatar_url || prof.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80';
+            const realName = prof.name || prof.display_name || prof.full_name || prof.username || cleanId;
+            const realAvatar = prof.avatar || prof.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80';
             foundUser = {
               id: prof.id || cleanId,
               name: realName,
-              username: prof.username || cleanId,
+              username: (prof.username || cleanId).replace(/^@/, ''),
               avatar: realAvatar,
               bio: prof.bio || 'Discovered via Barcode Scan',
               verified: prof.verified,
@@ -218,6 +272,7 @@ export const FriendBarcodeCenter: React.FC<FriendBarcodeCenterProps> = ({
               followingCount: prof.following_count ?? 5,
               likesCount: prof.likes_count ?? 20,
             };
+            usersDiscoveryService.registerUserLocally(foundUser);
           }
         } catch (err) {
           console.warn('Supabase profile fetch in FriendBarcodeCenter notice:', err);
