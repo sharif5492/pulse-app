@@ -23,9 +23,6 @@ import { CallOverlay } from './components/CallOverlay';
 import { IncomingCallDialog } from './components/IncomingCallDialog';
 import { PWAInstallBanner } from './components/PWAInstallBanner';
 import { UserSearchModal } from './components/UserSearchModal';
-import { CoinsRewardModal } from './components/CoinsRewardModal';
-import { CoinRewardBanner } from './components/CoinRewardBanner';
-import { PaymentWalletModal } from './components/PaymentWalletModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
 const MainAppContent: React.FC = () => {
@@ -47,11 +44,6 @@ const MainAppContent: React.FC = () => {
     setCallVoiceEffect,
     isUserSearchOpen,
     closeUserSearchModal,
-    isCoinsRewardModalOpen,
-    closeCoinsRewardModal,
-    isPaymentWalletOpen,
-    closePaymentWallet,
-    walletInitialTab,
     activeConversation,
   } = useApp();
   const { isAuthenticated, user } = useAuth();
@@ -187,22 +179,6 @@ const MainAppContent: React.FC = () => {
             <UserSearchModal 
               isOpen={isUserSearchOpen} 
               onClose={closeUserSearchModal} 
-            />
-
-            {/* Floating Top Coin Reward Banner */}
-            <CoinRewardBanner />
-
-            {/* Global Fake Coins & Rewards Wallet Hub Modal */}
-            <CoinsRewardModal 
-              isOpen={isCoinsRewardModalOpen} 
-              onClose={closeCoinsRewardModal} 
-            />
-
-            {/* Global Payment & Payouts Wallet Modal (JazzCash, Easypaisa, PayPal, Skrill) */}
-            <PaymentWalletModal
-              isOpen={isPaymentWalletOpen}
-              onClose={closePaymentWallet}
-              initialTab={walletInitialTab}
             />
           </>
         )}

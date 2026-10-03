@@ -216,31 +216,3 @@ export interface CallSignalPayload {
   isVideoOff?: boolean;
 }
 
-export type PaymentMethodType = 'jazzcash' | 'easypaisa' | 'paypal' | 'skrill';
-
-export interface WalletTransaction {
-  id: string;
-  type: 'purchase' | 'withdrawal';
-  coins: number;
-  fiatAmount: number;
-  currency: 'PKR' | 'USD';
-  method: PaymentMethodType;
-  accountDetails: string;
-  accountTitle?: string;
-  status: 'completed' | 'processing' | 'failed';
-  timestamp: string;
-  referenceId: string;
-  notes?: string;
-}
-
-export interface WalletPackage {
-  id: string;
-  name: string;
-  coins: number;
-  bonusCoins?: number;
-  pricePkr: number;
-  priceUsd: number;
-  popular?: boolean;
-  badge?: string;
-}
-

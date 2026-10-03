@@ -158,8 +158,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onReplaySplash }) =>
         'pulse_connections_cache',
         'pulse_cached_profiles',
         'pulse_users_cache',
-        'pulse_coins',
-        'pulse_wallet_transactions',
       ];
       keysToRemove.forEach((key) => {
         try {

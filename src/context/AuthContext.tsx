@@ -1,22 +1,15 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { User, AuthMode, WalletTransaction, PaymentMethodType } from '../types';
+import { User, AuthMode } from '../types';
 import { CURRENT_USER } from '../mockData';
 import { authService, isSupabaseConfigured, supabase, profileService, usersDiscoveryService } from '../lib/supabase';
 import { getPersistentAvatar, savePersistentAvatar, optimizeAvatarImage } from '../lib/avatarStorage';
 import { audioUtils } from '../lib/audioUtils';
-
-export interface CoinRewardEvent {
-  amount: number;
-  reason: string;
-  id: number;
-}
 
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   isSupabaseConfigured: boolean;
-  pulseCoins: number;
   authModalOpen: boolean;
   authMode: AuthMode;
   isGuest: boolean;
@@ -27,35 +20,7 @@ interface AuthContextType {
   signupWithPassword: (email: string, pass: string, name: string, username: string) => Promise<{ success: boolean; error?: string }>;
   loginWithGoogle: () => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
-  deductCoins: (amount: number) => boolean;
-  addCoins: (amount: number, reason?: string, silent?: boolean) => void;
   updateUserProfile: (updates: Partial<User>) => void | Promise<void>;
-  // Gamified Traffic & Retention System
-  checkinStreak: number;
-  hasCheckedInToday: boolean;
-  claimDailyCheckIn: () => { success: boolean; coinsAwarded: number };
-  isSignupBonusClaimed: boolean;
-  claimSignupBonus: () => boolean;
-  latestCoinReward: CoinRewardEvent | null;
-  clearLatestCoinReward: () => void;
-  // Payment Wallet & Transactions (JazzCash, Easypaisa, PayPal, Skrill)
-  walletTransactions: WalletTransaction[];
-  purchaseCoinsWithPayment: (
-    coins: number,
-    fiatAmount: number,
-    currency: 'PKR' | 'USD',
-    method: PaymentMethodType,
-    accountDetails: string,
-    accountTitle?: string
-  ) => Promise<{ success: boolean; transaction: WalletTransaction }>;
-  withdrawCoinsToPayment: (
-    coins: number,
-    fiatAmount: number,
-    currency: 'PKR' | 'USD',
-    method: PaymentMethodType,
-    accountDetails: string,
-    accountTitle?: string
-  ) => Promise<{ success: boolean; transaction?: WalletTransaction; error?: string }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -117,119 +82,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
 
   const [isLoading, setIsLoading] = useState(false);
-  const [pulseCoins, setPulseCoins] = useState<number>(() => {
-    const saved = localStorage.getItem('pulse_coins');
-    return saved ? parseInt(saved, 10) : 2450;
-  });
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<AuthMode>('login');
-
-  // Gamified Traffic & Retention System States
-  const [latestCoinReward, setLatestCoinReward] = useState<CoinRewardEvent | null>(null);
-  const [lastCheckInDate, setLastCheckInDate] = useState<string>(() => {
-    return localStorage.getItem('pulse_last_checkin') || '';
-  });
-  const [checkinStreak, setCheckinStreak] = useState<number>(() => {
-    const s = localStorage.getItem('pulse_checkin_streak');
-    return s ? parseInt(s, 10) : 1;
-  });
-  const [isSignupBonusClaimed, setIsSignupBonusClaimed] = useState<boolean>(() => {
-    return localStorage.getItem('pulse_signup_bonus_claimed') === 'true';
-  });
-
-  // Wallet Transactions (JazzCash, Easypaisa, PayPal, Skrill)
-  const [walletTransactions, setWalletTransactions] = useState<WalletTransaction[]>(() => {
-    try {
-      const saved = localStorage.getItem('pulse_wallet_transactions');
-      if (saved) {
-        return JSON.parse(saved);
-      }
-    } catch (e) {}
-    return [
-      {
-        id: 'txn_init_1',
-        type: 'purchase',
-        coins: 1200,
-        fiatAmount: 280,
-        currency: 'PKR',
-        method: 'jazzcash',
-        accountDetails: '0302*******',
-        accountTitle: 'Pulse Member',
-        status: 'completed',
-        timestamp: new Date(Date.now() - 3600000 * 24 * 2).toISOString(),
-        referenceId: 'JC-782194',
-        notes: 'Standard Starter Pack + Bonus Coins',
-      },
-      {
-        id: 'txn_init_2',
-        type: 'withdrawal',
-        coins: 1000,
-        fiatAmount: 280,
-        currency: 'PKR',
-        method: 'easypaisa',
-        accountDetails: '0345*******',
-        accountTitle: 'Pulse Member',
-        status: 'completed',
-        timestamp: new Date(Date.now() - 3600000 * 24 * 5).toISOString(),
-        referenceId: 'EP-491023',
-        notes: 'Earnings Withdrawn to Mobile Wallet',
-      },
-    ];
-  });
-
-  const getTodayDateStr = () => new Date().toISOString().split('T')[0];
-  const hasCheckedInToday = lastCheckInDate === getTodayDateStr();
-
-  const clearLatestCoinReward = () => {
-    setLatestCoinReward(null);
-  };
-
-  const addCoins = (amount: number, reason?: string, silent?: boolean) => {
-    setPulseCoins((prev) => prev + amount);
-    if (!silent) {
-      audioUtils.playCoinCollect();
-      setLatestCoinReward({
-        amount,
-        reason: reason || 'Coins Credited 🪙',
-        id: Date.now(),
-      });
-    }
-  };
-
-  const claimSignupBonus = (): boolean => {
-    if (isSignupBonusClaimed) return false;
-    setIsSignupBonusClaimed(true);
-    localStorage.setItem('pulse_signup_bonus_claimed', 'true');
-    addCoins(500, '🎉 Welcome Gift: +500 Coins!');
-    return true;
-  };
-
-  const claimDailyCheckIn = (): { success: boolean; coinsAwarded: number } => {
-    const today = getTodayDateStr();
-    if (lastCheckInDate === today) {
-      return { success: false, coinsAwarded: 0 };
-    }
-
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().split('T')[0];
-
-    let newStreak = 1;
-    if (lastCheckInDate === yesterdayStr) {
-      newStreak = (checkinStreak % 7) + 1;
-    }
-
-    const streakRewards = [50, 100, 150, 200, 300, 450, 1000];
-    const coinsAwarded = streakRewards[newStreak - 1] || 100;
-
-    setCheckinStreak(newStreak);
-    setLastCheckInDate(today);
-    localStorage.setItem('pulse_checkin_streak', newStreak.toString());
-    localStorage.setItem('pulse_last_checkin', today);
-
-    addCoins(coinsAwarded, `Day ${newStreak} Streak Check-In 🌟`);
-    return { success: true, coinsAwarded };
-  };
 
   useEffect(() => {
     if (user && user.id) {
@@ -262,10 +116,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, 25000);
     return () => clearInterval(interval);
   }, [user]);
-
-  useEffect(() => {
-    localStorage.setItem('pulse_coins', pulseCoins.toString());
-  }, [pulseCoins]);
 
   // Synchronize authenticated user from Supabase session & database
   const syncUserFromSession = async (sessionUser: any) => {
@@ -481,14 +331,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.removeItem('pulse_is_guest');
       }
       profileService.updateProfile(res.user.id, newUser).catch(() => {});
-      
-      // Award Welcome Bonus on account sign up!
-      if (!isSignupBonusClaimed) {
-        setIsSignupBonusClaimed(true);
-        localStorage.setItem('pulse_signup_bonus_claimed', 'true');
-        addCoins(500, '🎉 Welcome Sign-up Bonus: +500 Coins!');
-      }
-
       closeAuthModal();
       return { success: true };
     }
@@ -586,14 +428,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     audioUtils.playPop();
   };
 
-  const deductCoins = (amount: number): boolean => {
-    if (pulseCoins >= amount) {
-      setPulseCoins((prev) => prev - amount);
-      return true;
-    }
-    return false;
-  };
-
   const updateUserProfile = async (updates: Partial<User>) => {
     if (!user) return;
     let finalAvatar = updates.avatar;
@@ -622,96 +456,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
-  const purchaseCoinsWithPayment = async (
-    coins: number,
-    fiatAmount: number,
-    currency: 'PKR' | 'USD',
-    method: PaymentMethodType,
-    accountDetails: string,
-    accountTitle?: string
-  ): Promise<{ success: boolean; transaction: WalletTransaction }> => {
-    const prefix = method === 'jazzcash' ? 'JC' : method === 'easypaisa' ? 'EP' : method === 'paypal' ? 'PP' : 'SK';
-    const refCode = `${prefix}-${Math.floor(100000 + Math.random() * 900000)}`;
-
-    const newTxn: WalletTransaction = {
-      id: `txn_${Date.now()}`,
-      type: 'purchase',
-      coins,
-      fiatAmount,
-      currency,
-      method,
-      accountDetails,
-      accountTitle: accountTitle || user?.name || user?.username || 'Pulse Member',
-      status: 'completed',
-      timestamp: new Date().toISOString(),
-      referenceId: refCode,
-      notes: `${method.toUpperCase()} Deposit credited`,
-    };
-
-    addCoins(coins, `${method.toUpperCase()} Deposit: +${coins.toLocaleString()} 🪙`);
-
-    setWalletTransactions((prev) => {
-      const updated = [newTxn, ...prev];
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('pulse_wallet_transactions', JSON.stringify(updated));
-      }
-      return updated;
-    });
-
-    return { success: true, transaction: newTxn };
-  };
-
-  const withdrawCoinsToPayment = async (
-    coins: number,
-    fiatAmount: number,
-    currency: 'PKR' | 'USD',
-    method: PaymentMethodType,
-    accountDetails: string,
-    accountTitle?: string
-  ): Promise<{ success: boolean; transaction?: WalletTransaction; error?: string }> => {
-    if (coins < 1000) {
-      return { success: false, error: 'Kam az kam 1,000 Coins (Rs. 280 / $1.00) ka withdrawal possible hai.' };
-    }
-    if (pulseCoins < coins) {
-      return { success: false, error: 'Aapke wallet mein itne coins mojood nahi hain.' };
-    }
-
-    const deducted = deductCoins(coins);
-    if (!deducted) {
-      return { success: false, error: 'Coins deduct karne mein masla aya. Dobara koshish karein.' };
-    }
-
-    const prefix = method === 'jazzcash' ? 'JC' : method === 'easypaisa' ? 'EP' : method === 'paypal' ? 'PP' : 'SK';
-    const refCode = `WD-${prefix}-${Math.floor(100000 + Math.random() * 900000)}`;
-
-    const newTxn: WalletTransaction = {
-      id: `txn_${Date.now()}`,
-      type: 'withdrawal',
-      coins,
-      fiatAmount,
-      currency,
-      method,
-      accountDetails,
-      accountTitle: accountTitle || user?.name || user?.username || 'Pulse Member',
-      status: 'completed',
-      timestamp: new Date().toISOString(),
-      referenceId: refCode,
-      notes: `Payout transferred via ${method.toUpperCase()}`,
-    };
-
-    audioUtils.playPop();
-
-    setWalletTransactions((prev) => {
-      const updated = [newTxn, ...prev];
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('pulse_wallet_transactions', JSON.stringify(updated));
-      }
-      return updated;
-    });
-
-    return { success: true, transaction: newTxn };
-  };
-
   return (
     <AuthContext.Provider
       value={{
@@ -721,7 +465,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         continueAsGuest,
         isLoading,
         isSupabaseConfigured,
-        pulseCoins,
         authModalOpen,
         authMode,
         openAuthModal,
@@ -730,19 +473,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         signupWithPassword,
         loginWithGoogle,
         logout,
-        deductCoins,
-        addCoins,
         updateUserProfile,
-        checkinStreak,
-        hasCheckedInToday,
-        claimDailyCheckIn,
-        isSignupBonusClaimed,
-        claimSignupBonus,
-        latestCoinReward,
-        clearLatestCoinReward,
-        walletTransactions,
-        purchaseCoinsWithPayment,
-        withdrawCoinsToPayment,
       }}
     >
       {children}

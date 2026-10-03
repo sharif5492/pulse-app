@@ -106,15 +106,6 @@ interface AppContextType {
   isUserSearchOpen: boolean;
   openUserSearchModal: () => void;
   closeUserSearchModal: () => void;
-  // Coins & Rewards Modal
-  isCoinsRewardModalOpen: boolean;
-  openCoinsRewardModal: () => void;
-  closeCoinsRewardModal: () => void;
-  // Payment Wallet Modal (Purchase & Withdraw via JazzCash, Easypaisa, PayPal, Skrill)
-  isPaymentWalletOpen: boolean;
-  walletInitialTab: 'purchase' | 'withdraw' | 'history';
-  openPaymentWallet: (initialTab?: 'purchase' | 'withdraw' | 'history') => void;
-  closePaymentWallet: () => void;
   // User Block & Privacy System
   blockedUserIds: string[];
   blockedUsers: User[];
@@ -228,7 +219,7 @@ function mapDbNotification(notif: any): NotificationItem {
 }
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, deductCoins } = useAuth();
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<TabType>('home');
   const [reels, setReels] = useState<Reel[]>(MOCK_REELS);
   const [activeReelIndex, setActiveReelIndex] = useState(0);
@@ -297,21 +288,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [createType, setCreateType] = useState<'reel' | 'story' | 'live'>('reel');
   const [isMobilePreviewFrame, setIsMobilePreviewFrame] = useState(false);
   const [isUserSearchOpen, setIsUserSearchOpen] = useState(false);
-  const [isCoinsRewardModalOpen, setIsCoinsRewardModalOpen] = useState(false);
-  const [isPaymentWalletOpen, setIsPaymentWalletOpen] = useState(false);
-  const [walletInitialTab, setWalletInitialTab] = useState<'purchase' | 'withdraw' | 'history'>('purchase');
 
   const openUserSearchModal = () => setIsUserSearchOpen(true);
   const closeUserSearchModal = () => setIsUserSearchOpen(false);
-
-  const openCoinsRewardModal = () => setIsCoinsRewardModalOpen(true);
-  const closeCoinsRewardModal = () => setIsCoinsRewardModalOpen(false);
-
-  const openPaymentWallet = (initialTab: 'purchase' | 'withdraw' | 'history' = 'purchase') => {
-    setWalletInitialTab(initialTab);
-    setIsPaymentWalletOpen(true);
-  };
-  const closePaymentWallet = () => setIsPaymentWalletOpen(false);
 
   const unreadNotifsCount = notifications.filter((n) => !n.isRead).length;
   const unreadDMsCount = conversations.reduce((acc, c) => acc + c.unreadCount, 0);
@@ -2644,15 +2623,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isUserSearchOpen,
         openUserSearchModal,
         closeUserSearchModal,
-        // Coins & Rewards Modal
-        isCoinsRewardModalOpen,
-        openCoinsRewardModal,
-        closeCoinsRewardModal,
-        // Payment Wallet Modal (Purchase & Withdraw via JazzCash, Easypaisa, PayPal, Skrill)
-        isPaymentWalletOpen,
-        walletInitialTab,
-        openPaymentWallet,
-        closePaymentWallet,
         // User Block & Privacy System
         blockedUserIds,
         blockedUsers,

@@ -137,16 +137,6 @@ Enables real-time push alerts on mobile devices and desktop browsers when someon
 
 ---
 
-## 5. 💰 Wallet & Payment Gateways Configuration
-
-Pulse includes built-in wallet support for **JazzCash, Easypaisa, PayPal, and Skrill**.
-Transactions are securely handled through standard payment intent workflows.
-To customize payment receiver numbers/merchant accounts:
-- Open `src/types.ts` and `src/components/WalletModal.tsx`.
-- Adjust your merchant receiver numbers, titles, or exchange conversion rates (PKR / USD).
-
----
-
 ## 🧪 Testing Your Configuration
 
 Once your `.env` is saved:

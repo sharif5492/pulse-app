@@ -7,16 +7,16 @@ Use this guide to fill in all the details when creating your product listing on 
 ## 📌 1. Item Title & Overview
 
 - **Item Title**:  
-  `Pulse - Short Video Reels, Live Streaming, WebRTC Video/Audio Calls & Creator Wallet (React 18 PWA + Full-Stack Node)`
+  `Pulse - Short Video Reels, Live Streaming, WebRTC Video/Audio Calls & Direct Chat (React 18 PWA + Full-Stack Node)`
 
 - **Short Summary (1-2 sentences)**:  
-  `A high-performance TikTok & Instagram style full-stack Progressive Web App (PWA) with short video reels, live rooms, WebRTC 1-on-1 audio/video calling, real-time direct chat, and creator monetization wallet with JazzCash, Easypaisa, PayPal & Skrill.`
+  `A high-performance TikTok & Instagram style full-stack Progressive Web App (PWA) with short video reels, live rooms, WebRTC 1-on-1 audio/video calling, and real-time direct chat.`
 
 - **Category**:  
   `Scripts & Code` -> `JavaScript` / `Node.js` OR `Mobile App` -> `React Native / Web App`
 
 - **Tags / Keywords**:  
-  `tiktok clone`, `instagram clone`, `reels`, `short video app`, `live streaming`, `webrtc video call`, `pwa`, `progressive web app`, `supabase`, `creator wallet`, `easypaisa`, `jazzcash`, `social network`, `direct messaging`, `react 18`, `tailwindcss`
+  `tiktok clone`, `instagram clone`, `reels`, `short video app`, `live streaming`, `webrtc video call`, `pwa`, `progressive web app`, `supabase`, `social network`, `direct messaging`, `react 18`, `tailwindcss`
 
 ---
 
@@ -38,7 +38,6 @@ Use this guide to fill in all the details when creating your product listing on 
   <li>🎙️ <strong>Live Streaming Explorer</strong>: Broadcast live rooms with viewer count, real-time animated gift bursts, comments, and host audio controls.</li>
   <li>💬 <strong>Encrypted Direct Chat & Voice Notes</strong>: Instant 1-on-1 chat, real-time message delivery receipts (double checks), and microphone voice note recording with audio waveform visualization.</li>
   <li>👥 <strong>Snapchat-Style Friend & Barcode System</strong>: Custom user profiles with unique User IDs, instant QR code generator, live camera barcode scanner, and WhatsApp invitation links.</li>
-  <li>💳 <strong>Creator Monetization Wallet</strong>: In-app coin balance system with dual fiat currency conversion (PKR / USD) and support for <strong>JazzCash, Easypaisa, PayPal, and Skrill</strong>.</li>
   <li>🤖 <strong>Google Gemini AI Integration</strong>: AI-assisted viral caption generation, content script generator, and intelligent chat assistant.</li>
   <li>📱 <strong>100% PWA & Standalone Android Ready</strong>: Installs with 1 tap as an app icon on iOS, Android, and Desktop; comes with GitHub Actions workflow to build native Android APK.</li>
 </ul>
@@ -97,8 +96,7 @@ Take screenshots of the following pages (preferably in Mobile View / DevTools De
 3. **WebRTC Video Call**: In-call screen with live preview, mute, camera flip, and end call controls.
 4. **Direct Messages & Chat**: 1-on-1 chat room showing audio voice waveform note and verified checkmark.
 5. **Friend Barcode & QR Center**: The Snapchat-style QR barcode generator and live camera scanner.
-6. **Creator Wallet**: Coin balance display with JazzCash, Easypaisa, PayPal & Skrill top-up modal.
-7. **Profile View**: Creator profile with followers/following statistics, verified badge, and bio.
+6. **Profile View**: Creator profile with followers/following statistics, verified badge, and bio.
 
 ---
 

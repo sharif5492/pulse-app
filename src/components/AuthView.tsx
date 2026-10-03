@@ -148,7 +148,7 @@ export const AuthView: React.FC = () => {
           <p className="text-xs text-slate-400 max-w-xs mx-auto leading-relaxed">
             {mode === 'login'
               ? 'Welcome back! Sign in to watch reels, join live streams, and chat with creators.'
-              : 'Join the next-generation video platform and claim your welcome coins bonus!'}
+              : 'Join the next-generation video platform to connect, watch reels, and go live!'}
           </p>
         </div>
 
@@ -177,14 +177,6 @@ export const AuthView: React.FC = () => {
             Create Account
           </button>
         </div>
-
-        {/* Signup Welcome Gift Promo Badge */}
-        {mode === 'signup' && (
-          <div className="mb-4 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center gap-2">
-            <Gift className="w-4 h-4 text-amber-400 shrink-0" />
-            <span><strong>+500 Pulse Coins</strong> welcome gift instantly on signup!</span>
-          </div>
-        )}
 
         {/* Error Feedback Banner */}
         {errorMessage && (

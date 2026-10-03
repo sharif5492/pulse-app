@@ -27,7 +27,6 @@
    - [2. ZEGOCLOUD (Video & Voice Calling / Live Streams)](#2-zegocloud-calling--live-streams---optional)
    - [3. Google Gemini AI (AI Creator Assistant)](#3-google-gemini-ai---optional)
    - [4. OneSignal (Push Notifications)](#4-onesignal-push-notifications---optional)
-   - [5. Payment Gateways (JazzCash, Easypaisa, PayPal, Skrill)](#5-creator-wallet--payment-gateways)
 4. [🗄️ Database Setup in Supabase](#️-database-setup-in-supabase)
 5. [🌐 Production Deployment Guide](#-production-deployment-guide)
    - [Deploying to Vercel (1-Click)](#deploy-to-vercel-recommended)
@@ -48,7 +47,6 @@
 - 🎙️ **Live Streaming Rooms**: Browse live interactive broadcasts with animated virtual gift explosions, live viewer chat, and host tools.
 - 💬 **Encrypted Direct Chat & Voice Notes**: Instant 1-on-1 direct messaging, read delivery receipts, and microphone voice recording with live audio waveform visualization.
 - 👥 **Snapchat-Style Friend Barcode System**: Every user gets a unique User ID and custom QR barcode. Scan barcodes with live camera or share WhatsApp invite links.
-- 💳 **Creator Monetization Wallet**: Digital coin balance, fiat conversion (PKR / USD), and integrated deposit methods for **JazzCash, Easypaisa, PayPal, and Skrill**.
 - 🤖 **Google Gemini AI Integration**: Auto-generate viral video captions, creative hashtag sets, and AI chatbot assistance.
 - 📱 **Progressive Web App (PWA)**: 1-click install banner on Android, iOS, Windows, and macOS without app store approvals.
 
@@ -136,13 +134,6 @@ Sends browser and mobile push alerts for new messages, likes, and friend request
    ```env
    VITE_ONESIGNAL_APP_ID="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
    ```
-
-### 5. Creator Wallet & Payment Gateways
-The app comes pre-configured with support for **JazzCash, Easypaisa, PayPal, and Skrill**.
-- To change receiver account titles, phone numbers, or exchange rates, open:
-  - `src/types.ts` (PaymentMethodType & WalletTransaction)
-  - `src/components/PaymentWalletModal.tsx`
-- You can adjust default pricing, coin packages, and merchant accounts in seconds.
 
 ---
 
