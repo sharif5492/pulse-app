@@ -19,14 +19,13 @@ jobs:
           cache: 'npm'
 
       - name: Install Project Dependencies
-        run: npm ci || npm install
+        run: npm install --legacy-peer-deps
 
       - name: Compile Application Production Build
         run: npm run build
 
-      - name: Initialize Capacitor Mobile Platforms
+      - name: Sync Capacitor Android Framework
         run: |
-          npx cap add android || true
           npx cap sync android
 
       - name: Setup Java Environment (JDK 17)
@@ -35,13 +34,16 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
+      - name: Grant Gradle Executive Permissions
+        run: chmod +x android/gradlew
+
       - name: Build Pure Standalone Android APK
         run: |
           cd android
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug --stacktrace
 
       - name: Output Generated Pulse APK File
         uses: actions/upload-artifact@v4
         with:
-          name: Pulse-Mobile-App
+          name: Pulse-Android-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk

@@ -13,6 +13,7 @@
     "pack": "python3 scripts/pack-codester.py"
   },
   "dependencies": {
+    "@capacitor/core": "^8.5.2",
     "@google/genai": "^2.4.0",
     "@supabase/supabase-js": "^2.112.4",
     "@tailwindcss/vite": "^4.1.14",
@@ -29,6 +30,8 @@
     "vite": "^6.2.3"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/cli": "^8.5.2",
     "@types/canvas-confetti": "^1.9.0",
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
