@@ -229,31 +229,35 @@ export const authService = {
     return { user: demoUser };
   },
 
-  async signInWithGoogle(): Promise<{ error?: string | null; redirected?: boolean }> {
+  async signInWithGoogle(): Promise<{ error?: string | null; redirected?: boolean; url?: string | null }> {
     if (supabase && isValidSupabaseConfig) {
       try {
         const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
         const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
         const safeRedirectTo = `${currentOrigin}${currentPath}`;
 
+        console.log('[Supabase Auth] Testing Google OAuth provider with skipBrowserRedirect: true...');
         const { data, error } = await supabase.auth.signInWithOAuth({
           provider: 'google',
           options: {
             redirectTo: safeRedirectTo,
-            skipBrowserRedirect: false,
+            skipBrowserRedirect: true,
           },
         });
 
         if (error) {
-          console.warn('Supabase Google OAuth provider notice:', error.message);
-          // Return notice rather than throwing unhandled exception
+          console.warn('[Supabase Auth] Google OAuth provider error:', error.message);
           return { error: error.message };
         }
 
-        // If data.url is returned or browser initiates redirect
-        return { redirected: Boolean(data?.url) };
+        if (data?.url) {
+          console.log('[Supabase Auth] Google OAuth authorization URL generated:', data.url);
+          return { error: null, url: data.url, redirected: false };
+        }
+
+        return { error: null };
       } catch (err: any) {
-        console.warn('Google OAuth exception caught:', err);
+        console.warn('[Supabase Auth] Google OAuth exception:', err);
         return { error: err.message || 'Google OAuth authentication failed' };
       }
     }

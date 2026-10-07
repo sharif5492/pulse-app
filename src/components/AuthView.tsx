@@ -8,6 +8,7 @@ import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
 import { AuthMode } from '../types';
 import { audioUtils } from '../lib/audioUtils';
+import { isFirebaseAuthConfigured, auth, googleProvider, signInWithPopup, signInWithRedirect } from '../lib/firebase';
 
 export const AuthView: React.FC = () => {
   const { 
@@ -70,12 +71,53 @@ export const AuthView: React.FC = () => {
   const handleGoogleSignIn = async () => {
     setErrorMessage(null);
     setSuccessNotice(null);
-    const res = await loginWithGoogle();
-    if (res.error) {
-      setErrorMessage(res.error);
-    } else {
-      audioUtils.playPop();
-      setActiveTab('home');
+    console.log('[AuthView] handleGoogleSignIn triggered');
+
+    // 1. If Firebase Auth is configured, attempt signInWithPopup with fallback to signInWithRedirect
+    if (isFirebaseAuthConfigured && auth && googleProvider) {
+      try {
+        console.log('[AuthView] Attempting Firebase signInWithPopup(auth, googleProvider)...');
+        const userCred = await signInWithPopup(auth, googleProvider);
+        console.log('[AuthView] Firebase signInWithPopup success:', userCred.user?.email);
+        if (userCred.user) {
+          audioUtils.playPop();
+          setActiveTab('home');
+          return;
+        }
+      } catch (popupError: any) {
+        console.warn('[AuthView] Firebase signInWithPopup failed:', popupError.code, popupError.message);
+        
+        // If popup was blocked or closed, fallback to signInWithRedirect
+        if (
+          popupError.code === 'auth/popup-blocked' ||
+          popupError.code === 'auth/cancelled-popup-request' ||
+          popupError.code === 'auth/popup-closed-by-user'
+        ) {
+          try {
+            console.log('[AuthView] Fallback: Calling signInWithRedirect(auth, googleProvider)...');
+            await signInWithRedirect(auth, googleProvider);
+            return;
+          } catch (redirectError: any) {
+            console.error('[AuthView] signInWithRedirect error:', redirectError);
+          }
+        }
+      }
+    }
+
+    // 2. Perform smooth loginWithGoogle authentication
+    try {
+      console.log('[AuthView] Calling context loginWithGoogle()...');
+      const res = await loginWithGoogle();
+      if (res && res.error) {
+        console.warn('[AuthView] loginWithGoogle error:', res.error);
+        setErrorMessage(res.error);
+      } else {
+        audioUtils.playPop();
+        setActiveTab('home');
+      }
+    } catch (err: any) {
+      console.error('[AuthView] handleGoogleSignIn caught exception:', err);
+      setErrorMessage(err.message || 'Google sign-in temporarily unavailable.');
     }
   };
 

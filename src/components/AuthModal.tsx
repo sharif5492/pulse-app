@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { AuthMode } from '../types';
+import { isFirebaseAuthConfigured, auth, googleProvider, signInWithPopup, signInWithRedirect } from '../lib/firebase';
 
 export const AuthModal: React.FC = () => {
   const { 
@@ -60,9 +61,43 @@ export const AuthModal: React.FC = () => {
 
   const handleGoogleSignIn = async () => {
     setErrorMessage(null);
-    const res = await loginWithGoogle();
-    if (res.error) {
-      setErrorMessage(res.error);
+    console.log('[AuthModal] handleGoogleSignIn triggered');
+
+    if (isFirebaseAuthConfigured && auth && googleProvider) {
+      try {
+        console.log('[AuthModal] Attempting Firebase signInWithPopup...');
+        const userCred = await signInWithPopup(auth, googleProvider);
+        if (userCred.user) {
+          closeAuthModal();
+          return;
+        }
+      } catch (popupError: any) {
+        console.warn('[AuthModal] Firebase signInWithPopup notice:', popupError.code, popupError.message);
+        if (
+          popupError.code === 'auth/popup-blocked' ||
+          popupError.code === 'auth/cancelled-popup-request' ||
+          popupError.code === 'auth/popup-closed-by-user'
+        ) {
+          try {
+            console.log('[AuthModal] Fallback: signInWithRedirect...');
+            await signInWithRedirect(auth, googleProvider);
+            return;
+          } catch (redirectError) {
+            console.error('[AuthModal] signInWithRedirect error:', redirectError);
+          }
+        }
+      }
+    }
+
+    try {
+      console.log('[AuthModal] Calling context loginWithGoogle...');
+      const res = await loginWithGoogle();
+      if (res && res.error) {
+        setErrorMessage(res.error);
+      }
+    } catch (err: any) {
+      console.error('[AuthModal] Google Sign-In error:', err);
+      setErrorMessage(err.message || 'Google sign-in temporarily unavailable.');
     }
   };
 
