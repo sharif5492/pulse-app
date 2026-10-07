@@ -443,9 +443,11 @@ export const CameraFiltersView: React.FC<CameraFiltersViewProps> = ({ onClose, o
           autoPlay
           playsInline
           muted
-          className={`w-full h-full object-cover transition-all duration-300 ${facingMode === 'user' ? '-scale-x-100' : ''}`}
+          className="w-full h-full object-cover transition-all duration-300"
           style={{
             filter: combinedCssFilter,
+            transform: 'none',
+            WebkitTransform: 'none',
           }}
         />
 
@@ -455,8 +457,8 @@ export const CameraFiltersView: React.FC<CameraFiltersViewProps> = ({ onClose, o
             <img
               src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=1000&auto=format&fit=crop&q=80"
               alt="Camera Simulator"
-              className={`absolute inset-0 w-full h-full object-cover -z-10 opacity-75 ${facingMode === 'user' ? '-scale-x-100' : ''}`}
-              style={{ filter: combinedCssFilter }}
+              className="absolute inset-0 w-full h-full object-cover -z-10 opacity-75"
+              style={{ filter: combinedCssFilter, transform: 'none', WebkitTransform: 'none' }}
             />
             <div className="pt-16 max-w-sm">
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-semibold backdrop-blur-md mb-2">

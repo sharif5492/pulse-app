@@ -46,10 +46,14 @@ export function useCall() {
     }
     audioUtils.playCallConnected();
 
-    // Call joinRoom only after user clicks Accept
+    // Call joinRoom only after user clicks Accept with mirror disabled
     try {
-      if (zg && typeof zg.joinRoom === 'function') {
-        await zg.joinRoom(targetSession.id);
+      if (zg) {
+        zg.setVideoMirrorMode?.(0);
+        zg.setVideoConfig?.({ mirror: false });
+        if (typeof zg.joinRoom === 'function') {
+          await zg.joinRoom(targetSession.id);
+        }
       }
     } catch (err) {
       console.warn('zg.joinRoom error on handleAccept:', err);

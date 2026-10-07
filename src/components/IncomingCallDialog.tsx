@@ -23,8 +23,12 @@ export const IncomingCallDialog: React.FC<IncomingCallDialogProps> = ({
   const handleAccept = async () => {
     audioUtils.playPop();
     try {
-      if (zg && typeof zg.joinRoom === 'function') {
-        await zg.joinRoom(session.id);
+      if (zg) {
+        zg.setVideoMirrorMode?.(0);
+        zg.setVideoConfig?.({ mirror: false });
+        if (typeof zg.joinRoom === 'function') {
+          await zg.joinRoom(session.id);
+        }
       }
     } catch (err) {
       console.warn('zg.joinRoom error on accept:', err);

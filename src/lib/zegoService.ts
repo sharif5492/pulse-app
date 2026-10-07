@@ -11,6 +11,7 @@ export interface ZegoStreamConfig {
   facingMode: 'user' | 'environment';
   resolution: '720p' | '1080p' | '480p';
   beautyFilter: 'none' | 'glow' | 'cyberpunk' | 'warm' | 'cool';
+  mirror?: boolean;
 }
 
 export class ZegoLiveEngine {
@@ -20,12 +21,43 @@ export class ZegoLiveEngine {
   private isMicOn = true;
   private facingMode: 'user' | 'environment' = 'user';
   private beautyFilter: 'none' | 'glow' | 'cyberpunk' | 'warm' | 'cool' = 'none';
+  private isVideoMirrored = false;
   private canvasAnimationId: number | null = null;
   private roomId: string | null = null;
   private isHost = false;
 
   constructor() {
-    // Initialized engine instance
+    // Initialized engine instance with mirror disabled by default
+    this.isVideoMirrored = false;
+  }
+
+  /**
+   * Set video mirror mode for local preview and publishing.
+   * 0 = Disable mirror mode (standard ZEGOCLOUD SDK: VIDEO_MIRROR_MODE_NO_MIRROR)
+   * 1 = Only preview mirror
+   * 2 = Both preview and publish mirror
+   */
+  setVideoMirrorMode(mode: number | boolean, _streamId?: string) {
+    this.isVideoMirrored = typeof mode === 'number' ? mode !== 0 : Boolean(mode);
+    this.applyVideoMirrorMode();
+    console.log(`[ZegoLiveEngine] setVideoMirrorMode: ${mode} (mirror: ${this.isVideoMirrored})`);
+  }
+
+  /**
+   * Set video configuration with explicit mirror parameter.
+   */
+  setVideoConfig(config: { mirror?: boolean; [key: string]: any }) {
+    if (config.mirror !== undefined) {
+      this.isVideoMirrored = Boolean(config.mirror);
+      this.applyVideoMirrorMode();
+      console.log(`[ZegoLiveEngine] setVideoConfig mirror: ${this.isVideoMirrored}`);
+    }
+  }
+
+  private applyVideoMirrorMode() {
+    if (!this.videoElement) return;
+    this.videoElement.style.transform = this.isVideoMirrored ? 'scaleX(-1)' : 'none';
+    this.videoElement.style.webkitTransform = this.isVideoMirrored ? 'scaleX(-1)' : 'none';
   }
 
   /**
@@ -41,6 +73,10 @@ export class ZegoLiveEngine {
     this.isCameraOn = options.camera !== undefined ? options.camera : true;
     this.isMicOn = options.microphone !== undefined ? options.microphone : true;
     this.beautyFilter = options.beautyFilter || 'none';
+    this.isVideoMirrored = options.mirror !== undefined ? Boolean(options.mirror) : false;
+
+    // Enforce mirror disabled for natural TikTok-style preview
+    this.applyVideoMirrorMode();
 
     try {
       if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
@@ -78,6 +114,10 @@ export class ZegoLiveEngine {
       this.videoElement.muted = true; // Avoid local audio feedback loop
       this.videoElement.playsInline = true;
       this.videoElement.autoplay = true;
+
+      // Ensure no inverted transform or upside-down rotation
+      this.applyVideoMirrorMode();
+
       this.videoElement.play().catch(() => {
         // Autoplay handled
       });
@@ -123,6 +163,7 @@ export class ZegoLiveEngine {
         camera: this.isCameraOn,
         microphone: this.isMicOn,
         beautyFilter: this.beautyFilter,
+        mirror: false,
       });
     }
     return null;
@@ -272,7 +313,24 @@ export class ZegoLiveEngine {
 
   async joinRoom(roomId: string, token?: string, user?: any, config?: any): Promise<boolean> {
     this.roomId = roomId;
-    console.log(`[ZegoLiveEngine] Joined room ${roomId}`);
+    this.setVideoMirrorMode(0);
+    this.setVideoConfig({ mirror: false });
+    console.log(`[ZegoLiveEngine] Joined room ${roomId} (mirror: false)`);
+    return true;
+  }
+
+  async loginRoom(roomId: string, token?: string, user?: any, config?: any): Promise<boolean> {
+    this.roomId = roomId;
+    this.setVideoMirrorMode(0);
+    this.setVideoConfig({ mirror: false });
+    console.log(`[ZegoLiveEngine] loginRoom ${roomId} (mirror: false)`);
+    return true;
+  }
+
+  async startPublishingStream(streamId: string, stream?: MediaStream, config: any = {}): Promise<boolean> {
+    this.setVideoMirrorMode(0);
+    this.setVideoConfig({ mirror: false });
+    console.log(`[ZegoLiveEngine] startPublishingStream ${streamId} (mirror: false)`);
     return true;
   }
 

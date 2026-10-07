@@ -113,18 +113,22 @@ export const CallOverlay: React.FC<CallOverlayProps> = ({
     }
   };
 
-  // Bind streams to video elements
+  // Bind streams to video elements without mirror/inversion
   useEffect(() => {
-    if (localVideoRef.current && session.localStream) {
-      localVideoRef.current.srcObject = session.localStream;
-    }
-  }, [session.localStream, session.callType, session.isVideoOff]);
+    const mainStream = isPipSwapped ? session.localStream : session.remoteStream;
+    const pipStream = isPipSwapped ? session.remoteStream : session.localStream;
 
-  useEffect(() => {
-    if (remoteVideoRef.current && session.remoteStream) {
-      remoteVideoRef.current.srcObject = session.remoteStream;
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = mainStream || null;
+      remoteVideoRef.current.style.transform = 'none';
+      remoteVideoRef.current.style.webkitTransform = 'none';
     }
-  }, [session.remoteStream, session.callType]);
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = pipStream || null;
+      localVideoRef.current.style.transform = 'none';
+      localVideoRef.current.style.webkitTransform = 'none';
+    }
+  }, [session.localStream, session.remoteStream, session.callType, session.isVideoOff, isPipSwapped]);
 
   // If minimized to floating card
   if (isMinimized) {
@@ -274,6 +278,7 @@ export const CallOverlay: React.FC<CallOverlayProps> = ({
               className={`w-full h-full object-cover transition-opacity duration-300 ${
                 session.status === 'connected' ? 'opacity-100' : 'opacity-40'
               }`}
+              style={{ transform: 'none', WebkitTransform: 'none' }}
             />
 
             {/* Remote Fallback / Overlay if waiting to connect or remote video is off */}
@@ -316,7 +321,8 @@ export const CallOverlay: React.FC<CallOverlayProps> = ({
                   autoPlay
                   playsInline
                   muted
-                  className="w-full h-full object-cover -scale-x-100"
+                  className="w-full h-full object-cover"
+                  style={{ transform: 'none', WebkitTransform: 'none' }}
                 />
               )}
             </div>

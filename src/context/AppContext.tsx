@@ -2425,9 +2425,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setActiveCall(acceptedSession);
     setIncomingCall(null);
 
-    // Call joinRoom only after user clicks Accept
+    // Call joinRoom only after user clicks Accept with mirror disabled
     try {
       if (zg && typeof zg.joinRoom === 'function') {
+        zg.setVideoMirrorMode?.(0);
+        zg.setVideoConfig?.({ mirror: false });
         await zg.joinRoom(acceptedSession.id);
       }
     } catch (err) {
@@ -2502,6 +2504,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const flipCallCamera = async () => {
     if (!activeCall) return;
+    try {
+      zg.setVideoMirrorMode?.(0);
+      zg.setVideoConfig?.({ mirror: false });
+    } catch {}
     const newStream = await webrtcService.switchCamera(activeCall.callType);
     if (newStream) {
       setActiveCall((prev) => (prev ? { ...prev, localStream: newStream, isCameraFlipped: !prev.isCameraFlipped } : null));

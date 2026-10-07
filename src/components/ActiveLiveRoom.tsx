@@ -213,7 +213,12 @@ export const ActiveLiveRoom: React.FC = () => {
             microphone: isMicActive,
             facingMode: cameraFacing,
             beautyFilter: activeFilter,
+            mirror: false,
           });
+
+          // Explicitly disable mirror mode for both preview and published stream
+          zegoLiveEngine.setVideoMirrorMode(0);
+          zegoLiveEngine.setVideoConfig({ mirror: false });
 
           // Explicitly turn camera on upon starting stream room
           zegoLiveEngine.turnCameraOn(true);
@@ -260,6 +265,8 @@ export const ActiveLiveRoom: React.FC = () => {
     const newMode = cameraFacing === 'user' ? 'environment' : 'user';
     setCameraFacing(newMode);
     await zegoLiveEngine.switchCamera();
+    zegoLiveEngine.setVideoMirrorMode(0);
+    zegoLiveEngine.setVideoConfig({ mirror: false });
     showFeedbackToast(`Switched to ${newMode === 'user' ? 'Front' : 'Rear'} Camera`);
   };
 
@@ -471,6 +478,7 @@ export const ActiveLiveRoom: React.FC = () => {
             className={`w-full h-full object-cover transition-all duration-300 ${getFilterStyle()} ${
               !isCameraActive ? 'opacity-0 pointer-events-none' : 'opacity-100'
             }`}
+            style={{ transform: 'none', WebkitTransform: 'none' }}
           />
 
           {/* Camera Disabled / Poster Fallback Screen */}
