@@ -56,7 +56,7 @@
         } else {
           window.addEventListener('load', () => {
             navigator.serviceWorker
-              .register('/service-worker.js', { scope: '/' })
+              .register('service-worker.js', { scope: '/' })
               .catch((error) => {
                 console.warn('[PWA] ServiceWorker registration notice:', error);
               });
